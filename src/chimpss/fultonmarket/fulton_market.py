@@ -193,9 +193,18 @@ class FultonMarket():
         self.save_dir = os.path.join(output_dir, 'saved_variables')
         os.makedirs(self.save_dir, exist_ok=True)
 
-        if file_exists_skip(self.output_ncdf, 'FultonMarket trajectory'):
-            print('Trajectory already exists. Move or delete it to re-run.')
+        # Resume support: only bail out when output.ncdf exists AND no
+        # sub-simulations have been saved yet. If saved_variables/<N>/ exists,
+        # `_configure_experiment_parameters` will set self.sim_no accordingly
+        # and the main loop will resume from there.
+        n_completed_subsims = len(os.listdir(self.save_dir))
+        if n_completed_subsims == 0 and file_exists_skip(self.output_ncdf, 'FultonMarket trajectory'):
+            print('Trajectory already exists with no saved sub-simulations. '
+                  'Move or delete it to re-run.')
             return
+        if n_completed_subsims > 0 and os.path.exists(self.output_ncdf):
+            print(f'[resume] Found {n_completed_subsims} completed sub-simulation(s); '
+                  f'will resume from sim_no={n_completed_subsims}.')
 
         printf(f'total_sim_time      : {self.total_sim_time} ns')
         printf(f'iter_length         : {self.iter_length} ns')
@@ -513,6 +522,25 @@ class FultonMarket():
         bool
             True if the simulation should stop.
         """
+        # Time-only stopping path: when getContacts_Info is not configured the
+        # downstream call to getContactDistanceMatrix raises, even when the
+        # user has set --total_sim_time and is opting out of convergence-based
+        # stopping. Short-circuit to a pure time-based decision in that case.
+        if not getContacts_Info:
+            if self.total_sim_time is None:
+                printf("WARNING: no getContacts_Info AND no total_sim_time set "
+                       "— simulation has no stopping criterion and will not stop.")
+                return False
+            at_max_time = self.sim_no >= self.total_n_sims
+            done_or_in_progress = self.sim_no + 1
+            if at_max_time:
+                printf(f"Stopping: completed {done_or_in_progress} sub-simulations "
+                       f"(>= total_n_sims={self.total_n_sims}); no getContacts → time-based stop.")
+            else:
+                printf(f"Continuing: completed {done_or_in_progress}/{self.total_n_sims} "
+                       f"sub-simulations; no getContacts → skipping convergence check.")
+            return at_max_time
+
         printf("Gathering convergence related data...")
         analyzer = FultonMarketAnalysis(input_dir=self.output_dir, pdb=self.input_pdb, sele_str=self.sele_str)
 
