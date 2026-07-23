@@ -3,6 +3,56 @@
 All notable changes to ChiMPSS are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased] — AlGDock BPMF engine, neural nets, fixes, and repo cleanup
+
+### Added
+- `src/chimpss/algdock/`: full vendored AlGDock BPMF engine (no external package required).
+  Includes `BindingPMF`, all ForceFields (Grid, OBC, Sphere, Cylinder, Pose, ElectricField,
+  OpenMM), Integrators (HMC, ExternalMC, SmartDarting, VelocityVerlet), `BAT`, `IO`, `RMSD`,
+  `HMR`, `NAMD`, and sub-packages `bc_process`, `cd_process`, `configuration`, `free_energy`,
+  and `analysis`. Migrated from `simtk.openmm` → `openmm` namespace throughout.
+- `src/chimpss/neural_nets/vae.py`: `BatchNorm_VAE` (fully-connected VAE, ported from
+  Deep-MMS) and `WaveTransformVAE` (3D convolutional VAE for wave-transformed grids,
+  Kuzminykh et al. 2018). Implemented in JAX/Flax.
+- `src/chimpss/neural_nets/wave_transform.py`: 3D wave-transform preprocessing for
+  molecular voxel grids.
+- `src/chimpss/cli/algdock.py`: `chimpss-algdock` CLI entry point.
+- `tests/integration/test_algdock_ntsr1.py`: first end-to-end BPMF integration test
+  (ML-301 / NTSR1, protein-only, BC phase).
+- `tests/integration/run_motorrow.py`, `tests/integration/run_fultonmarket.py`:
+  integration runner scripts.
+- `docs/`: Sphinx autodoc scaffold for ReadTheDocs, with `autodoc_mock_imports` covering
+  the full heavy-dep stack (openmm, mdtraj, rdkit, jax, flax, …).
+
+### Changed
+- `MotorRow`: fixed platform selection (OpenCL → CUDA/CPU fallback) and restart-from-
+  checkpoint logic; fix `rmsd` to use mean not sum before sqrt for 1-D arrays.
+- `FultonMarket`: `FultonMarketAnalysis` shim module made callable; fix `parse_atom_inds`
+  to avoid `np.empty` uninitialized garbage indices.
+- `Bridgeport`: integrated `Adjust_System` notebook logic into `generate_systems`; guard
+  `modeller` import with `try/except`; lazy-import `py3Dmol` in `Analogue.visualize_alignment`.
+- `src/chimpss/__init__.py`: re-exports `BindingPMF` from `chimpss.algdock` at package level.
+- `conda-env.yml`: expanded from ~10 packages to the full ~25-package dependency set,
+  including `openmm`, `openmmtools`, `mdtraj`, `mdanalysis`, `pdbfixer`, `parmed`,
+  `pdb2pqr`, `pymbar`, `flax`, `optax`, `matplotlib`, `nglview`, `requests`, and dev tools.
+
+### Removed
+- All tracked `.ipynb_checkpoints` files (17 files — Jupyter auto-saves, now gitignored).
+- `Test_Things_Work.py`: WIP script with legacy flat imports; superseded by
+  `tests/regression/test_fultonmarket_e2e.py`.
+- `test_retro_conv.py`: Expanse-hardcoded paths; superseded by
+  `tests/regression/test_retro_conv.py`.
+- `recovery.py`: superseded by `chimpss-recovery` CLI entry point.
+- Root-level `recovery.job`, `run_mpi.job`, `run_one.job`: duplicate of canonical
+  `scripts/slurm/` versions.
+- `test_0.1.0.txt`: old pip-install verification log.
+- `_00_current_notes.txt`: dev scratch notes.
+
+### Added (repo hygiene)
+- `.gitignore`: covers `__pycache__`, `*.pyc`, `.ipynb_checkpoints`, `*.egg-info`,
+  simulation outputs (`*.dcd`, `*.nc`, `*.chk`), scratch dirs (`NA/`, `Hoods/`),
+  and ephemeral planning files.
+
 ## [0.1.2] — File naming, path handling, and existence checks
 
 ### Added

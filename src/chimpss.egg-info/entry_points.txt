@@ -1,0 +1,10 @@
+[console_scripts]
+chimpss-algdock = chimpss.cli.algdock:main
+chimpss-fetch-pdbs = chimpss.cli.fetch_pdbs:main
+chimpss-fultonmarket = chimpss.cli.fultonmarket:main
+chimpss-fultonmarket-mpi = chimpss.cli.fultonmarket_mpi:main
+chimpss-generate-pca = chimpss.cli.generate_pca:main
+chimpss-motorrow = chimpss.cli.motorrow:main
+chimpss-project-pca = chimpss.cli.project_pca:main
+chimpss-recovery = chimpss.cli.recovery:main
+chimpss-retro-analysis = chimpss.cli.retro_analysis:main

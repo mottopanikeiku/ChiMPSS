@@ -13,10 +13,14 @@ dependencies = [
     # scikit-learn, jax, seaborn, netCDF4, py3dmol) must be installed via conda.
     # See README.md and conda-env.yml for the full environment setup.
     # NOT listed here (also not pip-installable):
-    #   modeller        → conda install -c salilab modeller
-    #   openbabel       → conda install -c conda-forge openbabel
-    #   vina            → separate AutoDock Vina install
-    #   openmmgridforce → pip install git+https://github.com/jimtufts/openmmgridforce
+    #   modeller             → conda install -c salilab modeller
+    #   openbabel            → conda install -c conda-forge openbabel
+    #   vina                 → separate AutoDock Vina install
+    #
+    # BPMF engine (chimpss.algdock) is vendored — no external AlGDock package required.
+    # Still required from local source:
+    #   occupancy_fingerprinter → pip install -e /path/to/occupancy_fingerprinter
+    #   openmmgridforce      → pip install -e /path/to/openmmgridforce   (requires CMake + OpenMM headers)
 ]
 
 [project.optional-dependencies]
@@ -47,6 +51,7 @@ chimpss-fetch-pdbs       = "chimpss.cli.fetch_pdbs:main"
 chimpss-generate-pca     = "chimpss.cli.generate_pca:main"
 chimpss-project-pca      = "chimpss.cli.project_pca:main"
 chimpss-recovery         = "chimpss.cli.recovery:main"
+chimpss-algdock          = "chimpss.cli.algdock:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

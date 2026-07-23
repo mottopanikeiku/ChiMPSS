@@ -7,6 +7,14 @@ src/chimpss.egg-info/dependency_links.txt
 src/chimpss.egg-info/entry_points.txt
 src/chimpss.egg-info/requires.txt
 src/chimpss.egg-info/top_level.txt
+src/chimpss/algdock/__init__.py
+src/chimpss/algdock/binding_site.py
+src/chimpss/algdock/cli.py
+src/chimpss/algdock/free_energy.py
+src/chimpss/algdock/protocol.py
+src/chimpss/algdock/runner.py
+src/chimpss/algdock/sampler.py
+src/chimpss/algdock/system.py
 src/chimpss/analysis/__init__.py
 src/chimpss/analysis/contacts.py
 src/chimpss/analysis/distance_matrix.py
@@ -28,6 +36,7 @@ src/chimpss/bridgeport/protein_preparer.py
 src/chimpss/bridgeport/repair_protein.py
 src/chimpss/bridgeport/wat_opc3.xml
 src/chimpss/cli/__init__.py
+src/chimpss/cli/algdock.py
 src/chimpss/cli/fetch_pdbs.py
 src/chimpss/cli/fultonmarket.py
 src/chimpss/cli/fultonmarket_mpi.py

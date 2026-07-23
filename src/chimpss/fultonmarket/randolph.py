@@ -85,7 +85,7 @@ class Randolph():
         self.term_overlap_thresh = term_overlap_thresh
 
         self.current_cycle = 0
-        while self.current_cycle <= self.n_cycles:
+        while self.current_cycle < self.n_cycles:
             self._run_cycle()
 
 

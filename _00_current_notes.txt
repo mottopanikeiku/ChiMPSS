@@ -1,3 +1,0 @@
-nglview and gpu-enabled jax are not part of the installation instructions.
-    My personal experience is to install everything else and then use pip to install gpu jax as described in their instructions
-    

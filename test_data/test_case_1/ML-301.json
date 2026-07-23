@@ -1,0 +1,91 @@
+{
+      "working_dir": "/expanse/lustre/projects/iit129/tnguyen7/NTSR1/BP/",
+      "Protein": {
+            "input_pdb_dir": "/expanse/lustre/projects/iit129/tnguyen7/git/Bridgeport/crystal_pdb",
+            "input_pdb": "6za8-pdb-bundle1.pdb",
+            "chain": "A"
+      },
+      "Ligand": {
+            "name": "RTI-3a",
+            "resname": "SR5",
+            "chainid": false,
+            "smiles": "COC1=CC=CC(OC)=C1C1=CC(=NN1C1=CC=NC2=C1C=CC(Cl)=C2)C(=O)N[C@@H](CC(C)C)C(O)=O",
+            "Analogue": {
+                  "name": "ML-301",
+                  "smiles": "COC1=CC=CC(OC)=C1C1=NC(=CN1C1=C2C=CC(Cl)=CC2=NC=C1)C(=O)N[C@H](CC(C)C)C([O-])=O",
+                  "add_atoms": [
+                        [
+                              10,
+                              13
+                        ],
+                        [
+                              6,
+                              15
+                        ],
+                        [
+                              26,
+                              26
+                        ],
+                        [
+                              27,
+                              27
+                        ],
+                        [
+                              28,
+                              28
+                        ],
+                        [
+                              29,
+                              29
+                        ],
+                        [
+                              30,
+                              33
+                        ],
+                        [
+                              34,
+                              30
+                        ],
+                        [
+                              36,
+                              32
+                        ],
+                        [
+                              35,
+                              31
+                        ]
+                  ],
+                  "remove_atoms": false,
+                  "align_all": true,
+                  "rmsd_thresh": 1,
+                  "n_conformers": 1
+            },
+            "small_molecule_params": true,
+            "sanitize": true,
+            "removeHs": true,
+            "proximityBonding": true,
+            "nstd_resids": null,
+            "pH": 7.0,
+            "neutral_Cterm": false
+      },
+      "Environment": {
+            "alignment_ref": "/expanse/lustre/projects/iit129/tnguyen7/git/Bridgeport/crystal_pdb/6z66_OPM.pdb",
+            "reference_chain": [
+                  "A"
+            ],
+            "membrane": true,
+            "pH": 7.2,
+            "ion_strength": 0.15
+      },
+      "RepairProtein": {
+            "fasta_path": "/expanse/lustre/projects/iit129/tnguyen7/git/Bridgeport/fasta/NTSR1.fasta",
+            "working_dir": "/expanse/lustre/projects/iit129/tnguyen7/git/Bridgeport/interactive/modeller_intermediates",
+            "tails": [
+                  48,
+                  390
+            ],
+            "loops": [],
+            "secondary_template": "/expanse/lustre/projects/iit129/tnguyen7/git/Bridgeport/crystal_pdb/AF-P30989-F1-model_v4.pdb",
+            "engineered_resids": null
+      }
+}

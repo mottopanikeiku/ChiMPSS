@@ -2,20 +2,72 @@ name: chimpss
 channels:
   - conda-forge
   - omnia
-  - conda-canary
-  - defaults
   - salilab
-  - https://repo.anaconda.com/pkgs/main
-  - https://repo.anaconda.com/pkgs/r
+  - defaults
+
 dependencies:
+  # Python runtime
   - python=3.10
-  - mdanalysis
-  - modeller
-  - mpiplus
-  - netcdf4
-  - openbabel
-  - openff-toolkit
+
+  # Core simulation stack (must be conda — no pip equivalents)
+  - openmm
   - openmmtools
+  - mdtraj
+  - mdanalysis
+  - pdbfixer
+  - parmed
+  - pdb2pqr
+  - pymbar
+  - mpiplus
+
+  # Force fields & cheminformatics
+  - openff-toolkit
+  - rdkit
+
+  # Numerics & ML
+  - numpy
+  - scipy
+  - scikit-learn
+  - jax             
+  - "jaxlib=*=*cuda*"
+  - flax            # Flax neural network library (used by chimpss.neural_nets)
+  - optax           # JAX optimizer library
+
+  # Analysis & visualization
+  - matplotlib
   - seaborn
+  - nglview
   - py3dmol
-  - vina
+  - netcdf4
+
+  # Structural biology tools (not on PyPI)
+  - modeller        # UCSF Modeller — requires free academic license
+  - openbabel
+  - vina            # AutoDock Vina
+
+  # HTTP / networking
+  - requests
+
+  # Dev tools
+  - pytest
+  - pytest-cov
+  - ruff
+  - black
+  - pre-commit
+  - ipykernel
+
+  # Install package in editable mode
+  - pip
+  - pip:
+    # GPU-accelerated JAX — uncomment and choose the variant matching your CUDA version.
+    # CPU-only jax from conda-forge above is sufficient for non-GPU workflows.
+    # - jax[cuda12]   # CUDA 12.x (most HPC clusters, modern GPUs)
+    # - jax[cuda11]   # CUDA 11.x (older clusters)
+
+    # Local source packages required by chimpss.algdock (not on PyPI or conda-forge).
+    # Clone each repo, then uncomment:
+    # - -e /path/to/occupancy_fingerprinter
+    # - -e /path/to/openmmgridforce   # requires CMake + OpenMM headers
+
+    # Install ChiMPSS itself in editable mode
+    - -e ".[dev]"

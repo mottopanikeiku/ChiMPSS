@@ -72,7 +72,6 @@ def test_fultonmarket_short_run(tmp_path):
         output_dir=out,
         init_overlap_thresh=0.0,
         term_overlap_thresh=0.0,
-        convergence_thresh=1.0,
     )
 
     market = FultonMarket(**init_kwargs)

@@ -13,5 +13,6 @@ Provides-Extra: mpi
 Requires-Dist: mpi4py; extra == "mpi"
 Provides-Extra: docs
 Requires-Dist: sphinx; extra == "docs"
-Requires-Dist: myst-parser; extra == "docs"
+Requires-Dist: sphinx-rtd-theme; extra == "docs"
 Requires-Dist: sphinx-autodoc-typehints; extra == "docs"
+Requires-Dist: myst-parser; extra == "docs"

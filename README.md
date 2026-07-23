@@ -25,87 +25,6 @@ PDB / FASTA / SMILES
   │  (PTRE run) │
   └─────────────┘
 ```
----
-## Next Changes to Make!
-
-These are the things that will be changed next...
-
-
-NAME.SIGNIFICANCE.EXTENSION\
-NAME is comprised of PROTEINNAME_LIGANDNAME\
-assert no underscores or periods in the names otherwise
-
-For example, the output files from 5ht2b with LSD might be:\
-    5HT2B_LSD.topology.pdb and 5HT2B_LSD.system.xml
-
-
-This version worked for the students but we don't want to run into the issue of a single package version mismatch
-
-There have been issues with the sequence, we should adjust the modeller component to be better about sequences\
-It should always be very clear and robust to which sequence you are aligning and which sequence you have in a structure and which sequence you would like to simulate
-
-CIF 2 PDB  biopython does not keep the indexing of the residues while openbabel will fail to maintain the chainIDs\
-Perhaps there are better ways to convert that preserve the maximal information\
-One of these also maintains the connect records, not sure which, we need them
-
-There are inconsistencies between where we call for full paths and where we call for directories and assume file names\
-It would be preferable to always call for file paths in arguments, not directories as arguments
-
-Argument names (such as 'tails' and 'loops' in Modeller prep) are ambiguous - they should either be renamed or better documented.
-
-It is somewhat confusing that there are pdb files (for example) that are given in three different setups
-
-Alignment workflows need to be in their own module - there are a lot of repeated yet similar calculations
-
-People get confused about what is the ligand and what is the analogoue (they think the ligand will be simulated not the analogue)\
-Consider renaming these to template ligand and analogoue ligand\
-Also consider renaming to template and ligand - template is in the structure and ligand is not.\
-All ligands can be treated as analogoues
-
-Conformer generation may not always find a proper pose, it is often more poor than docking anyway.\
-Consider docking and pose analysis in place of conformer generation\
-Also consider (not so seriously) using light AlGDock
-
-File outputs (FOR USER FACING FILES/CODES)\
-Complex file names should have filenames containing the protein and ligand names.\
-Systems should be readily constructed if we would like to resuse them.\
-This also demands a fix for:  we currently run everything one shot and do not check if files exist.\
-Files with common extensions should be more obvious, see new naming convention above.
-
-
-Motor Row may be the most heavily edited, because we want to introduce a new module.\
-
-There will be a new module called OpenMMIO.  This module will handle the majority of interactions that we have\
-with the construction of OpenMM simulations.\
-MotorRow as originally written is thus an application of this module, not the module itself.\
-MotorRow will continue to be the five step burn in protocol
-
-Naming convention of the step files should be unified (consider step_5 vs. Step5 )\
-and that the dcd files should have frames recorded less often.
-
-INstallation of the Fulton Market package is a huge pain.  Mostly because of getting a JAX gpu active version\
-
-Documentation can be improved for the arguments here, documentation across the board can actually be improved.\
-
-Arguments with simple names should be better described\
-
-Analysis should be made into a seperate module, with a number of submodules which are related yet almost independent:\
-
-analysis.reporting - this module is for making plots of data that already exists (such as plotting the energy or box volume over a simulation)\
-analysis.conventional - this module is for the analysis of "straight" MD.  Straight is in quotes because the data appears to the code as straight md (one pdb one dcd as input).  In actuallity this dcd may be a resampled set of frames, but this module is for the analysis of one trajectory (set of coordinates) \
-analysis.ptre - this module is for the analysis of PTRE simulations.  Analyses within this module necessitate the usage and/or processing of data from multiple states of the simulation\
-
-
-### Very Later things
-
-There are historically issues regarding the placement of the protein, for system construction
-it requires that the protein center of mass is at the origin, because membrane is added with leaflets
-split on the XY plane.  Simulation with periodic boundary conditions however requires that all
-particles are in the positive coorinate region (first "quadrant" of three d space).  This inconsistency in the protein center of mass location has sometimes led to a translation of the protein/ligand that does not
-effect the other.
-
-
-
 
 
 ---
@@ -489,6 +408,69 @@ human GPCRome.
 
 ---
 
+## Stage 4 — AlGDock: Binding PMF (BPMF)
+
+The `chimpss.algdock` module is a vendored BPMF engine for computing absolute binding
+free energies of small-molecule ligands.  No external AlGDock package is required — the
+full engine is bundled under `src/chimpss/algdock/`.
+
+```python
+from chimpss.algdock import BindingPMF
+
+bpmf = BindingPMF(
+    ligand_tarball="ML-301_local.json",
+    receptor_pdb="NTSR1.topology.pdb",
+    receptor_inpcrd="NTSR1.topology.pdb",
+    receptor_prmtop="NTSR1.prmtop",
+    site="Measure",
+    solvation="Full",
+)
+bpmf.run_BC()   # binding-site confinement (BC) phase
+bpmf.run_CD()   # cool-down / alchemical decoupling (CD) phase
+```
+
+Or via CLI:
+
+```bash
+chimpss-algdock --ligand ML-301_local.json \
+                --receptor-pdb NTSR1.topology.pdb \
+                --receptor-prmtop NTSR1.prmtop \
+                --site Measure --solvation Full
+```
+
+BPMF requires two external source packages compiled from local clones:
+
+```bash
+pip install -e /path/to/occupancy_fingerprinter
+pip install -e /path/to/openmmgridforce   # requires CMake + OpenMM headers
+```
+
+---
+
+## Neural Networks (`chimpss.neural_nets`)
+
+The `chimpss.neural_nets` module provides JAX/Flax neural network models for
+molecular representation learning, supporting the ML/CADD integration roadmap.
+
+| Class | Description |
+|---|---|
+| `BatchNorm_VAE` | Fully-connected variational autoencoder with BatchNorm + Dropout (ported from Deep-MMS) |
+| `WaveTransformVAE` | 3D convolutional VAE for wave-transformed molecular grids (Kuzminykh et al. 2018) |
+
+```python
+from chimpss.neural_nets.vae import BatchNorm_VAE, WaveTransformVAE
+from chimpss.neural_nets.wave_transform import wave_transform_grid
+```
+
+Requires GPU-enabled JAX and Flax:
+
+```bash
+pip install -U "jax[cuda12]"
+conda install -c conda-forge flax optax
+```
+
+---
+
 ## CLI reference
 
 | Command | Description |
@@ -501,6 +483,7 @@ human GPCRome.
 | `chimpss-generate-pca` | Build GPCR reference PCA from a set of PDB structures |
 | `chimpss-project-pca` | Project new trajectories onto an existing PCA model |
 | `chimpss-recovery` | Resume an interrupted FultonMarket run from the last checkpoint |
+| `chimpss-algdock` | Run AlGDock BPMF free-energy calculation |
 
 Pass `--help` to any command for full argument documentation.
 

@@ -117,7 +117,8 @@ class FultonMarket():
             max_equil_fraction: float = 0.75,
             frobenius_thresh: float = 0.05,
             jsd_thresh: float = 0.10,
-            getContacts_Info: dict = None):
+            getContacts_Info: dict = None,
+            skip_contacts: bool = False):
         """
         Run parallel tempering replica exchange.
 
@@ -163,8 +164,12 @@ class FultonMarket():
             get_dynamic_contacts.py), ``conda_env`` (conda env name
             containing getContacts). Optional keys: ``getcontacts_python``
             (explicit interpreter path), ``cores`` (CPU cores, default 10).
-            If None, contact distance matrix convergence will raise an error
-            when first attempted.
+            When omitted and ``total_sim_time`` is set, FultonMarket uses a
+            time-only stopping criterion and skips convergence analysis.
+        skip_contacts : bool
+            If True, skip the contact distance matrix in convergence checking.
+            Contact convergence is then treated as passing. Must be explicitly
+            set to True — contacts are required by default. Default False.
         """
 
         # Store run parameters
@@ -180,6 +185,7 @@ class FultonMarket():
         self.frobenius_thresh = frobenius_thresh
         self.jsd_thresh = jsd_thresh
         self.getContacts_Info = getContacts_Info if getContacts_Info is not None else {}
+        self.skip_contacts = skip_contacts
 
         # Prepare output directories
         self.output_dir = output_dir
@@ -220,6 +226,7 @@ class FultonMarket():
         printf(f'frobenius_thresh    : {self.frobenius_thresh}')
         printf(f'jsd_thresh          : {self.jsd_thresh}')
         printf(f'getContacts_Info    : {self.getContacts_Info}')
+        printf(f'skip_contacts       : {self.skip_contacts}')
 
         self._configure_experiment_parameters()
 
@@ -241,6 +248,7 @@ class FultonMarket():
                 frobenius_thresh=self.frobenius_thresh,
                 jsd_thresh=self.jsd_thresh,
                 getContacts_Info=self.getContacts_Info,
+                skip_contacts=self.skip_contacts,
             )
             self.sim_no += 1
 
@@ -448,7 +456,15 @@ class FultonMarket():
         if self.total_sim_time is not None:
             self.total_n_sims = int(np.ceil(self.total_sim_time / self.sim_length))
             printf(f'Total sub-simulations required: {self.total_n_sims}')
-        self.finished = False
+        self.finished = (
+            self.total_sim_time is not None
+            and self.sim_no >= self.total_n_sims
+        )
+        if self.finished:
+            printf(
+                f'Stopping before launch: already completed '
+                f'{self.sim_no}/{self.total_n_sims} sub-simulations.'
+            )
         if self.sim_no > 0:
             self.converged = False
 
@@ -480,7 +496,7 @@ class FultonMarket():
         return velocities, positions, box_vectors, state_inds
 
 
-    def _evaluate_stopping_criterion(self, n_resample=1000, max_equil_fraction=0.75, frobenius_thresh=0.05, jsd_thresh=0.10, getContacts_Info=None):
+    def _evaluate_stopping_criterion(self, n_resample=1000, max_equil_fraction=0.75, frobenius_thresh=0.05, jsd_thresh=0.10, getContacts_Info=None, skip_contacts=False):
         """
         Check whether the simulation should stop by evaluating a series of
         convergence criteria against the current and all previously saved
@@ -522,24 +538,35 @@ class FultonMarket():
         bool
             True if the simulation should stop.
         """
-        # Time-only stopping path: when getContacts_Info is not configured the
-        # downstream call to getContactDistanceMatrix raises, even when the
-        # user has set --total_sim_time and is opting out of convergence-based
-        # stopping. Short-circuit to a pure time-based decision in that case.
-        if not getContacts_Info:
+        # This check runs after the current sub-simulation has been saved, while
+        # sim_no is the zero-based index of that save.
+        completed_subsims = self.sim_no + 1
+        at_max_time = (
+            self.total_sim_time is not None
+            and completed_subsims >= self.total_n_sims
+        )
+        if at_max_time:
+            printf(
+                f"Max simulation time reached after "
+                f"{completed_subsims}/{self.total_n_sims} sub-simulations "
+                "— skipping convergence checks."
+            )
+            return True
+
+        # Time-only stopping path used by fixed-duration production runs that
+        # do not configure getContacts. skip_contacts=True is different: it
+        # explicitly requests convergence analysis without the contact matrix.
+        if not getContacts_Info and not skip_contacts:
             if self.total_sim_time is None:
                 printf("WARNING: no getContacts_Info AND no total_sim_time set "
                        "— simulation has no stopping criterion and will not stop.")
                 return False
-            at_max_time = self.sim_no >= self.total_n_sims
-            done_or_in_progress = self.sim_no + 1
-            if at_max_time:
-                printf(f"Stopping: completed {done_or_in_progress} sub-simulations "
-                       f"(>= total_n_sims={self.total_n_sims}); no getContacts → time-based stop.")
-            else:
-                printf(f"Continuing: completed {done_or_in_progress}/{self.total_n_sims} "
-                       f"sub-simulations; no getContacts → skipping convergence check.")
-            return at_max_time
+            printf(
+                f"Continuing: completed "
+                f"{completed_subsims}/{self.total_n_sims} sub-simulations; "
+                "no getContacts → skipping convergence check."
+            )
+            return False
 
         printf("Gathering convergence related data...")
         analyzer = FultonMarketAnalysis(input_dir=self.output_dir, pdb=self.input_pdb, sele_str=self.sele_str)
@@ -564,17 +591,21 @@ class FultonMarket():
         # Compute current distance matrices
         torsional    = getTorsionalDistanceMatrix(traj, selection_string='protein or resname UNK')
         alpha_carbon = getAlphaCarbonDistanceMatrix(traj, selection_string='protein or resname UNK')
-        contact_distance, _ = getContactDistanceMatrix(
-            top_fn=os.path.join(sim_dir, 'resampled_top.pdb'),
-            traj_fn=os.path.join(sim_dir, 'resampled_trj.dcd'),
-            output_fn=os.path.join(sim_dir, 'resampled_contacts.tsv'),
-            **(getContacts_Info if getContacts_Info is not None else {}),
-        )
         current_matrices = {
             'torsion':      torsional,
             'alpha_carbon': alpha_carbon,
-            'contact':      contact_distance,
         }
+
+        if not skip_contacts:
+            contact_distance, _ = getContactDistanceMatrix(
+                top_fn=os.path.join(sim_dir, 'resampled_top.pdb'),
+                traj_fn=os.path.join(sim_dir, 'resampled_trj.dcd'),
+                output_fn=os.path.join(sim_dir, 'resampled_contacts.tsv'),
+                **(getContacts_Info if getContacts_Info is not None else {}),
+            )
+            current_matrices['contact'] = contact_distance
+        else:
+            printf("skip_contacts=True — contact distance matrix omitted from convergence check.")
 
         # Save current matrices
         for name, matrix in current_matrices.items():
@@ -612,16 +643,14 @@ class FultonMarket():
             for name in current_matrices
         }
 
-        # Build checks
-        at_max_time     = self.total_sim_time is not None and self.sim_no >= self.total_n_sims
-        past_minimum    = self.sim_no >= (self.total_n_sims * self.minimum_fraction4convergence)
+        # Build checks (at_max_time already handled above with early return)
+        past_minimum    = completed_subsims >= (self.total_n_sims * self.minimum_fraction4convergence)
         equil_ok        = equil_fraction < max_equil_fraction
         torsion_ok      = matrix_converged['torsion']
         alpha_carbon_ok = matrix_converged['alpha_carbon']
-        contact_ok      = matrix_converged['contact']
+        contact_ok      = matrix_converged.get('contact', True)
 
         checks = [
-            ('Max simulation time reached',      at_max_time),
             ('Past minimum simulation fraction', past_minimum),
             ('Equilibration discard < 75%',      equil_ok),
             ('Torsion matrix converged',         torsion_ok),
@@ -652,8 +681,7 @@ class FultonMarket():
                 printf(f"  {name:>12} -- no previous matrices to compare")
         printf("=" * (width + 12))
 
-        # Stop if at max time, or if all convergence checks pass
-        convergence_checks = [result for _, result in checks[1:]]
-        if at_max_time or all(convergence_checks):
+        # Stop if all convergence checks pass (at_max_time exits early above)
+        if all(result for _, result in checks):
             return True
         return False

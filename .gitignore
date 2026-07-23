@@ -1,0 +1,66 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# Distribution / packaging
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+var/
+sdist/
+develop-eggs/
+.installed.cfg
+lib/
+lib64/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+*-checkpoint.ipynb
+*-checkpoint.py
+
+# Virtual environments / conda
+.env
+.venv
+env/
+venv/
+ENV/
+
+# Test / coverage artifacts
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+.tox/
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Simulation scratch data (not for version control)
+NA/
+Hoods/
+
+# Local scratch / ephemeral planning files
+untitled.py
+algdock-testing-plan.md
+methods.md
+methods.tex
+
+# OpenMM / simulation output (large binary files)
+*.dcd
+*.nc
+*.ncdf
+*.chk

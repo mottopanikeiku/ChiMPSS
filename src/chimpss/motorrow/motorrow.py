@@ -66,6 +66,14 @@ class MotorRow():
 
         self.system_xml = system_xml
 
+        # Copy the system XML into the working directory so it is always
+        # co-located with the state XMLs (needed by downstream tools like
+        # chimpss.algdock.converter which require both PDB and system XML).
+        if system_xml is not None:
+            dest = os.path.join(self.abs_work_dir, 'system.xml')
+            if not os.path.exists(dest):
+                shutil.copy(system_xml, dest)
+
         #Get the pdbfile, store the topology (and initial positions i guess)
         if os.path.isabs(pdb_file):
             pass
