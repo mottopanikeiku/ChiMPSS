@@ -67,7 +67,7 @@ def test_fultonmarket_short_run(tmp_path):
         T_max=320,
     )
     run_kwargs = dict(
-        iter_length=0.001,
+        iter_length=0.010,
         sim_length=0.01,
         output_dir=out,
         init_overlap_thresh=0.0,

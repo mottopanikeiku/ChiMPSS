@@ -49,8 +49,8 @@ parser.add_argument('--T-max',        type=float, default=310.0, help='Maximum t
 parser.add_argument('--sim-length',   type=float, default=0.01,  help='Sub-simulation length in ns (default: 0.01)')
 parser.add_argument('--n-sims',       type=int,   default=1,     help='Number of sub-simulations (default: 1 — increase to test convergence machinery)')
 parser.add_argument('--hmr', action='store_true',
-                    help='HMR mode: sets dt=3.5 fs and iter_length=0.00175 ns (1.75 ps) '
-                         'instead of the standard 2.0 fs / 0.001 ns')
+                    help='HMR mode: sets dt=3.5 fs and iter_length=0.0175 ns (17.5 ps) '
+                         'instead of the standard 2.0 fs / 0.010 ns (10 ps)')
 parser.add_argument('--getcontacts-script', default=None, metavar='PATH',
                     help='Path to get_dynamic_contacts.py (required unless --no-contacts)')
 parser.add_argument('--getcontacts-env', default=None, metavar='ENV',
@@ -62,7 +62,7 @@ args = parser.parse_args()
 
 # --hmr automatically selects the appropriate timestep and swap interval
 dt          = 3.5     if args.hmr else 2.0
-iter_length = 0.00175 if args.hmr else 0.001
+iter_length = 0.0175  if args.hmr else 0.010
 
 if not args.no_contacts and not args.getcontacts_script:
     parser.error(

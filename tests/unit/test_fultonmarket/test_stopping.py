@@ -7,6 +7,7 @@ pytest.importorskip("openmm", reason="openmm not installed")
 pytest.importorskip("mdtraj", reason="mdtraj not installed")
 
 from chimpss.fultonmarket import FultonMarket, Randolph
+from openmm import unit
 
 
 def _time_only_market(sim_no, total_n_sims=60):
@@ -65,3 +66,25 @@ def test_randolph_runs_exact_number_of_cycles():
     sampler.main(init_overlap_thresh=0.5, term_overlap_thresh=0.35)
 
     assert observed == [0, 1, 2]
+
+
+@pytest.mark.parametrize(
+    ("timestep_fs", "iteration_ns"),
+    [
+        (2.0, 0.010),
+        (3.5, 0.0175),
+    ],
+)
+def test_iteration_length_preserves_five_thousand_steps(
+    timestep_fs,
+    iteration_ns,
+):
+    sampler = Randolph.__new__(Randolph)
+    sampler.sim_time = 1.0
+    sampler.temperatures = [300 * unit.kelvin, 310 * unit.kelvin]
+    sampler.dt = timestep_fs
+    sampler.iter_length = iteration_ns
+
+    sampler._configure_simulation_parameters()
+
+    assert sampler.n_steps_per_iter == 5_000

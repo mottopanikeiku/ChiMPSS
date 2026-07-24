@@ -20,8 +20,8 @@ parser.add_argument('--n_replicates', default=68,   type=int,
                     help='Number of replica exchange states. Default 68.')
 
 # --- Simulation timing ---
-parser.add_argument('--iter_length', default=0.001, type=float,
-                    help='Time between replica swaps (ns). Default 0.001.')
+parser.add_argument('--iter_length', default=0.010, type=float,
+                    help='Time between replica swaps (ns). Default 0.010 (10 ps at 2 fs).')
 parser.add_argument('--timestep',    default=2.0,   type=float,
                     help='Integration timestep (fs). Default 2.0.')
 parser.add_argument('--sim_length',  default=25,    type=int,

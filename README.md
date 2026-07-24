@@ -295,7 +295,7 @@ fm = FultonMarket(
     T_max=367,
     n_replicates=12,
 )
-fm.run(total_sim_time=25, iter_length=1, output_dir="remd_leg1/")
+fm.run(total_sim_time=25, iter_length=0.010, output_dir="remd_leg1/")
 ```
 
 Or via CLI:
@@ -348,9 +348,10 @@ intermediate states.
 
 2. **Propagation.**
    Each replica is integrated with the **Langevin Middle Integrator** at its assigned
-   temperature (1 ps⁻¹ friction, 2 fs timestep).  After each iteration — defined as
-   1 aggregate picosecond of propagation across all replicas — exchange moves are proposed
-   between adjacent replicas using a Metropolis criterion.
+   temperature (1 ps⁻¹ friction, 2 fs timestep). After each 10 ps iteration
+   (5,000 MD steps per replica), exchange moves are proposed between adjacent replicas
+   using a Metropolis criterion. With a 3.5 fs HMR timestep, the interval scales to
+   17.5 ps to preserve the same 5,000 steps between exchange attempts.
 
 3. **Adaptive state insertion (first leg only).**
    After the first 25 ns leg, the acceptance probability between every pair of adjacent

@@ -31,8 +31,8 @@ def parse_args():
                    help='Number of replica exchange states. Default 68.')
 
     # Simulation timing
-    p.add_argument('--iter_length', default=0.001, type=float,
-                   help='Time between replica swaps (ns). Default 0.001.')
+    p.add_argument('--iter_length', default=0.010, type=float,
+                   help='Time between replica swaps (ns). Default 0.010 (10 ps at 2 fs).')
     p.add_argument('--timestep',    default=2.0,   type=float,
                    help='Integration timestep (fs). Default 2.0.')
     p.add_argument('--sim_length',  default=25,    type=int,
