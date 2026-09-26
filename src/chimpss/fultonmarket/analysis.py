@@ -103,6 +103,29 @@ class FultonMarketAnalysis():
         self.temperatures = self.temperatures_list[-1]
         self._printf(f'Temperature array shapes: {[(i, t.shape) for i, t in enumerate(self.temperatures_list)]}', level='all')
 
+        # `skip` is a per-sub-simulation frame discard, so it only makes sense
+        # relative to how many frames a sub-simulation actually holds. That
+        # count is set by the exchange/save cadence, NOT by sim_length: at the
+        # legacy 1 ps cadence a 25 ns segment held ~150 frames, but at the
+        # production 17.5 ps cadence it holds only 9-11. The default skip=10
+        # was calibrated for the former and silently empties every segment of
+        # the latter, which then surfaces far downstream as a bogus "no frames"
+        # error. Fail loudly and specifically here instead.
+        seg_frames = [(d, int(np.load(os.path.join(d, 'states.npy'), mmap_mode='r').shape[0]))
+                      for d in self.storage_dirs]
+        starved = [(d, n) for d, n in seg_frames if n - skip < 1]
+        if starved:
+            worst = min(n for _, n in starved)
+            raise ValueError(
+                f'skip={skip} discards every frame of {len(starved)}/{len(seg_frames)} '
+                f'sub-simulation(s) (smallest holds {worst} frames; '
+                f'e.g. {starved[0][0]}).\n'
+                f'The saved data is intact -- `skip` is simply too large for this '
+                f'save cadence. Pass a smaller skip (skip=0 lets the statistical '
+                f'equilibration detection in determine_equilibration()/t0 handle '
+                f'the discard, which is the defensible choice at this cadence).'
+            )
+
         self.state_inds = [np.load(os.path.join(d, 'states.npy'), mmap_mode='r')[skip:] for d in self.storage_dirs]
         self.unshaped_energies = [np.load(os.path.join(d, 'energies.npy'), mmap_mode='r')[skip:]
                                   for d in self.storage_dirs]
@@ -722,9 +745,21 @@ class FultonMarketAnalysis():
                         f'Cannot open {pos_path} as float32 with shape {shape}'
                     ) from exc
 
-            assert pos_i.shape[0] > 0, (
-                f'{storage_dir} has no frames — delete the directory and resume.'
-            )
+            # NB: do NOT advise deleting the directory here. This branch fires
+            # whenever `skip` >= the segment's frame count, in which case the
+            # data on disk is perfectly good and deleting it would throw away
+            # completed production sampling. (It did read "delete the directory
+            # and resume", which would have destroyed 44 intact lisuride
+            # segments.) Genuine truncation is reported separately below.
+            if pos_i.shape[0] == 0:
+                on_disk = int(np.load(os.path.join(storage_dir, 'states.npy'),
+                                      mmap_mode='r').shape[0])
+                raise ValueError(
+                    f'{storage_dir}: no frames survive skip={skip} '
+                    f'(segment holds {on_disk} frames on disk). '
+                    f'The saved data is intact -- lower `skip`; '
+                    f'do not delete this directory.'
+                )
             self.positions.append(pos_i)
             self._printf(f'Loaded positions from {storage_dir}: shape {pos_i.shape}', level='all')
 
@@ -749,8 +784,13 @@ class FultonMarketAnalysis():
         getcontacts_script: str = None,
         conda_env: str = None,
         getcontacts_python: str = None,
+        skip_contacts: bool = False,
     ) -> Dict[int, dict]:
-        """Retroactively compute and save resampled distance matrices for all sub-simulations."""
+        """Retroactively compute and save resampled distance matrices for all sub-simulations.
+
+        Set `skip_contacts=True` to compute only the torsional and alpha-carbon
+        matrices, which requires no getContacts installation.
+        """
         import tempfile
 
         from chimpss.fultonmarket.retro_convergence import (
@@ -786,7 +826,8 @@ class FultonMarketAnalysis():
 
                 cache_sim_dir = resolve_cache_dir(output_cache_dir, sim_no)
                 existing = load_matrices(src_sim_dir, cache_sim_dir)
-                if len(existing) == 3 and not overwrite:
+                n_expected = 2 if skip_contacts else 3
+                if len(existing) >= n_expected and not overwrite:
                     self._printf(f'sim_no={sim_no}: all matrices present, skipping', level='all')
                     all_matrices[sim_no] = existing
                     continue
@@ -834,6 +875,7 @@ class FultonMarketAnalysis():
                     getcontacts_script=getcontacts_script,
                     conda_env=conda_env,
                     getcontacts_python=getcontacts_python,
+                    skip_contacts=skip_contacts,
                     _printf=self._printf,
                 )
 

@@ -122,11 +122,18 @@ def compute_distance_matrices(
     getcontacts_script: str = None,
     conda_env: str = None,
     getcontacts_python: str = None,
+    skip_contacts: bool = False,
     _printf=None,
 ) -> dict:
     """
     Compute torsional, alpha-carbon, and contact distance matrices from a
     resampled MDTraj trajectory.
+
+    When `skip_contacts` is True the contact matrix is omitted and only the
+    torsional and alpha-carbon matrices are returned. This mirrors the
+    `skip_contacts` option on the live convergence path in
+    `FultonMarket._evaluate_stopping_criterion`, and makes retroactive
+    convergence analysis possible without a getContacts installation.
     """
     from chimpss.fultonmarket.utils import (
         getAlphaCarbonDistanceMatrix,
@@ -136,6 +143,14 @@ def compute_distance_matrices(
 
     torsional    = getTorsionalDistanceMatrix(traj, selection_string='protein or resname UNK')
     alpha_carbon = getAlphaCarbonDistanceMatrix(traj, selection_string='protein or resname UNK')
+
+    if skip_contacts:
+        _log = _printf if _printf is not None else printf
+        _log('skip_contacts=True — contact distance matrix omitted.')
+        return {
+            'torsion':      torsional,
+            'alpha_carbon': alpha_carbon,
+        }
 
     contact_kwargs = dict(top_fn=pdb_out, traj_fn=dcd_out, output_fn=contacts_tsv)
     if getcontacts_script is not None:
@@ -202,8 +217,16 @@ def build_checks(
     jsd_results: dict,
     frobenius_thresh: float,
     jsd_thresh: float,
+    skip_contacts: bool = False,
 ) -> Dict[str, bool]:
-    """Build the ordered checks dict for a single sim_no. Final key is 'STOP'."""
+    """
+    Build the ordered checks dict for a single sim_no. Final key is 'STOP'.
+
+    When `skip_contacts` is True the two contact rows are omitted entirely
+    rather than recorded as failures. `_all_pass` returns False on an empty
+    score dict, so leaving them in would pin 'STOP' to False forever whenever
+    the contact matrix was never computed.
+    """
     def _all_pass(scores, thresh):
         return bool(scores) and all(v < thresh for v in scores.values())
 
@@ -214,9 +237,10 @@ def build_checks(
         'Torsion JSD converged':                              _all_pass(jsd_results['torsion'],       jsd_thresh),
         'Alpha-carbon Frobenius converged':                   _all_pass(frob_results['alpha_carbon'], frobenius_thresh),
         'Alpha-carbon JSD converged':                         _all_pass(jsd_results['alpha_carbon'],  jsd_thresh),
-        'Contact Frobenius converged':                        _all_pass(frob_results['contact'],      frobenius_thresh),
-        'Contact JSD converged':                              _all_pass(jsd_results['contact'],       jsd_thresh),
     }
+    if not skip_contacts:
+        checks['Contact Frobenius converged'] = _all_pass(frob_results['contact'], frobenius_thresh)
+        checks['Contact JSD converged']       = _all_pass(jsd_results['contact'],  jsd_thresh)
     checks['STOP'] = all(checks.values())
     return checks
 
@@ -258,7 +282,16 @@ def print_sim_report(
     _log(f"  Equilibration discards {equil_pct:.1f}% of data, "
          f"post-equil window covers {post_equil_pct:.1f}%, "
          f"comparing vs checkpoints from {first_valid_pct:.1f}%..{progress_pct:.1f}% of simulation")
+    # Only report matrices that were actually part of the checks -- when
+    # skip_contacts is on, the contact rows are absent from `checks` and
+    # reporting them here would imply they were evaluated.
+    reported = {'torsion', 'alpha_carbon'}
+    if 'Contact Frobenius converged' in checks:
+        reported.add('contact')
+
     for name in MATRIX_NAMES:
+        if name not in reported:
+            continue
         frob = frob_results[name]
         jsd  = jsd_results[name]
         if frob:
