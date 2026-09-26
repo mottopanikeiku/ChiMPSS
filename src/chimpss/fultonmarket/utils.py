@@ -293,7 +293,7 @@ def calculate_weighted_rc(reduced_cartesian, resampled_inds, upper_limit, pca_we
 def resample_with_MBAR(objs: List, u_kln: np.array, N_k: np.array, size: int, reshape_weights: tuple=None, specify_state: int=0, return_inds: bool=False, return_weights: bool=False, return_resampled_weights: bool=False, replace: bool=True, _printf=None):
 
     # Get MBAR weights
-    weights = compute_MBAR_weights(u_kln, N_k)
+    weights = compute_MBAR_weights(u_kln, N_k, _printf=_printf)
 
     # Reshape weights if specified
     if reshape_weights is not None:
@@ -342,10 +342,33 @@ def resample_with_MBAR(objs: List, u_kln: np.array, N_k: np.array, size: int, re
     return return_list
 
 
-def compute_MBAR_weights(u_kln, N_k):
+def compute_MBAR_weights(u_kln, N_k, _printf=None):
     """
+    Compute MBAR sample weights, tolerating a broken BAR initialiser.
+
+    `initialize='BAR'` is only a warm start for the self-consistent solver, but
+    in the installed pymbar it is a hard failure whenever any state pair lacks
+    overlap: `MBAR._initialize_with_bar` wraps its `bar()` call in
+    `except ConvergenceError:`, and `ConvergenceError` is never imported into
+    `pymbar/mbar.py` (it lives in `pymbar/utils.py`). `bar()` legitimately
+    raises `BoundsError`/`ConvergenceError` on poor overlap, and evaluating the
+    except clause then dies with `NameError: name 'ConvergenceError' is not
+    defined`. That killed 29 of 60 sub-simulations in the 2026-08-14 retro run.
+
+    Poor overlap is expected at low sim_no, where only a few sub-simulations'
+    worth of frames exist, so fall back to the default zeros initialisation
+    rather than losing the sub-simulation. The converged weights are the same;
+    only the number of solver iterations differs.
     """
-    mbar = MBAR(u_kln, N_k, initialize='BAR')
+    _log = _printf if _printf is not None else printf
+    try:
+        mbar = MBAR(u_kln, N_k, initialize='BAR')
+    except Exception as exc:
+        # NameError is the pymbar bug above; other failures here are equally
+        # confined to the warm start, so retry without it before giving up.
+        _log(f"MBAR BAR-initialisation failed ({type(exc).__name__}: {exc}); "
+             f"falling back to zeros initialisation.")
+        mbar = MBAR(u_kln, N_k)
 
     return mbar.weights()
 
