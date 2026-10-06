@@ -39,7 +39,11 @@ for k in segs[1:]:
     need(spread > 0.02, f'sub-sim {k}: replicas start from DIFFERENT structures (max RMS vs replica 0 {spread:.3f} nm)')
 B = np.concatenate([np.load(os.path.join(sv, str(k), 'box_vectors.npy')) for k in segs])
 Lx, Ly, Lz = B[..., 0, 0], B[..., 1, 1], B[..., 2, 2]
-need(np.allclose(Lx, Ly, rtol=1e-6), 'membrane barostat: box x == y (XY isotropic)')
+# XY isotropic scales x and y by the SAME factor: their ratio is invariant.
+# (x == y only holds for a square start; the 5-HT2B boxes are rectangular.)
+rxy = Lx / Ly
+spread = (rxy.max() - rxy.min()) / rxy.mean()
+need(spread < 1e-5, f'membrane barostat: x/y ratio constant (XY isotropic; rel. spread {spread:.1e})')
 need(np.std(Lx / Lz) > 1e-5, f'membrane barostat: x/z ratio varies (std {np.std(Lx / Lz):.2e}; isotropic would be ~1e-7)')
 print('CANARY PASS' if not fails else f'CANARY FAIL: {fails}')
 sys.exit(1 if fails else 0)
