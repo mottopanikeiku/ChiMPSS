@@ -1,0 +1,66 @@
+diff --git a/Bridgeport/RUN_BRIDGEPORT.job b/Bridgeport/RUN_BRIDGEPORT.job
+index 7d5f782..0d6905b 100644
+--- a/Bridgeport/RUN_BRIDGEPORT.job
++++ b/Bridgeport/RUN_BRIDGEPORT.job
+@@ -1,17 +1,21 @@
+ #!/bin/bash
+ #SBATCH --job-name="BRIDGEPORT"
+-#SBATCH --output="/path/to/output/logs/Check.%j.%N.out"
+-#SBATCH --partition=RM
++#SBATCH --output="/expanse/lustre/projects/iit127/fcetin/5ht2b/logs/bridgeport/BRIDGEPORT.%j.%N.out"
++#SBATCH --partition=compute
+ #SBATCH --nodes=1
+-#SBATCH --ntasks-per-node=4
+-#SBATCH --account=ACCOUNT NUMBER
+-#SBATCH -t 01:00:00
++#SBATCH --ntasks=1
++#SBATCH --cpus-per-task=5
++#SBATCH --mem=15G
++#SBATCH --account=iit127
++#SBATCH -t 12:00:00
+ 
+ source ~/.bashrc
+ 
+-conda activate prep
++set -eo pipefail
+ 
+-cd $SLURM_SUBMIT_DIR
++conda activate prep1
++
++cd /home/fcetin/Bridgeport/Bridgeport
+ 
+ echo BRIDGEPORT BATCH JOB FOR $1
+-python RUN_BRIDEPORT.py $1
++python RUN_BRIDGEPORT.py "$1"
+diff --git a/RepairProtein/RepairProtein.py b/RepairProtein/RepairProtein.py
+index c5343db..c7b286a 100644
+--- a/RepairProtein/RepairProtein.py
++++ b/RepairProtein/RepairProtein.py
+@@ -1,4 +1,4 @@
+-import shutil, os, sys
++import shutil, os, sys, tempfile
+ sys.path.append('/'.join(os.path.abspath(__file__).split('/')[:-1]))
+ import modeller
+ from modeller import *
+@@ -87,14 +87,18 @@ class RepairProtein():
+         self.pdb_fn = pdb_fn
+         self.fasta_fn = fasta_fn
+         self.fasta_name = fasta_fn.split('/')[-1].split('.')[0]
+-        self.working_dir = working_dir
+-        if not os.path.exists(self.working_dir):
+-            os.mkdir(self.working_dir)
+         self.name = self.pdb_fn.split('.pdb')[0]
+         try:
+             self.name = self.name.split('/')[-1]
+         except:
+             pass
++
++        # Give each repair run its own modeller scratch directory so
++        # concurrent Bridgeport jobs do not overwrite each other's files.
++        self.base_working_dir = os.path.abspath(working_dir)
++        os.makedirs(self.base_working_dir, exist_ok=True)
++        self.working_dir = tempfile.mkdtemp(prefix=f'{self.name}_', dir=self.base_working_dir)
++
+         print(datetime.now().strftime("%m/%d/%Y %H:%M:%S") + '//Welcome to RepairProtein', flush=True)
+         print(datetime.now().strftime("%m/%d/%Y %H:%M:%S") + '//Protein to repair:', self.pdb_fn, flush=True)
+         print(datetime.now().strftime("%m/%d/%Y %H:%M:%S") + '//Template sequence:', self.fasta_fn, flush=True)

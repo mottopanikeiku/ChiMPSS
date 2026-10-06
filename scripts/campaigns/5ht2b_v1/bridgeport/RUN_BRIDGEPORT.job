@@ -1,0 +1,21 @@
+#!/bin/bash
+#SBATCH --job-name="BRIDGEPORT"
+#SBATCH --output="/expanse/lustre/projects/iit127/fcetin/5ht2b/logs/bridgeport/BRIDGEPORT.%j.%N.out"
+#SBATCH --partition=compute
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=5
+#SBATCH --mem=15G
+#SBATCH --account=iit127
+#SBATCH -t 12:00:00
+
+source ~/.bashrc
+
+set -eo pipefail
+
+conda activate prep1
+
+cd /home/fcetin/Bridgeport/Bridgeport
+
+echo BRIDGEPORT BATCH JOB FOR $1
+python RUN_BRIDGEPORT.py "$1"
