@@ -118,7 +118,9 @@ class FultonMarket():
             frobenius_thresh: float = 0.05,
             jsd_thresh: float = 0.10,
             getContacts_Info: dict = None,
-            skip_contacts: bool = False):
+            skip_contacts: bool = False,
+            membrane_barostat: bool = False,
+            surface_tension: float = 0.0):
         """
         Run parallel tempering replica exchange.
 
@@ -170,6 +172,14 @@ class FultonMarket():
             If True, skip the contact distance matrix in convergence checking.
             Contact convergence is then treated as passing. Must be explicitly
             set to True — contacts are required by default. Default False.
+        membrane_barostat : bool
+            If True, pressure is coupled with a MonteCarloMembraneBarostat
+            (XY isotropic, Z free) so a bilayer can relax its area and thickness
+            independently. If False (default) openmmtools adds an isotropic
+            MonteCarloBarostat, which freezes the box aspect ratio.
+        surface_tension : float
+            Surface tension for the membrane barostat, in bar*nm. Default 0
+            (tensionless, as Amber Lipid17 bilayers are parameterised).
         """
 
         # Store run parameters
@@ -186,6 +196,8 @@ class FultonMarket():
         self.jsd_thresh = jsd_thresh
         self.getContacts_Info = getContacts_Info if getContacts_Info is not None else {}
         self.skip_contacts = skip_contacts
+        self.membrane_barostat = membrane_barostat
+        self.surface_tension = surface_tension
 
         # Prepare output directories
         self.output_dir = output_dir
@@ -227,6 +239,8 @@ class FultonMarket():
         printf(f'jsd_thresh          : {self.jsd_thresh}')
         printf(f'getContacts_Info    : {self.getContacts_Info}')
         printf(f'skip_contacts       : {self.skip_contacts}')
+        printf(f'membrane_barostat   : {self.membrane_barostat} '
+               f'(surface tension {self.surface_tension} bar*nm)')
 
         self._configure_experiment_parameters()
 
@@ -329,9 +343,23 @@ class FultonMarket():
             Single-element list containing the NPT state at T_min and 1 bar.
         """
         if not hasattr(self, 'thermodynamic_states'):
-            self.thermodynamic_states = [ThermodynamicState(system=self.system,
-                                                            temperature=self.temperatures[0],
-                                                            pressure=1.0 * unit.bar)]
+            if getattr(self, 'membrane_barostat', False):
+                import copy
+                system = copy.deepcopy(self.system)
+                for i in reversed(range(system.getNumForces())):
+                    if 'Barostat' in type(system.getForce(i)).__name__:
+                        system.removeForce(i)
+                system.addForce(MonteCarloMembraneBarostat(
+                    1.0 * unit.bar, self.surface_tension * unit.bar * unit.nanometer,
+                    self.temperatures[0], MonteCarloMembraneBarostat.XYIsotropic,
+                    MonteCarloMembraneBarostat.ZFree, 100))
+                self.thermodynamic_states = [ThermodynamicState(
+                    system=system, temperature=self.temperatures[0], pressure=1.0 * unit.bar,
+                    surface_tension=self.surface_tension * unit.bar * unit.nanometer)]
+            else:
+                self.thermodynamic_states = [ThermodynamicState(system=self.system,
+                                                                temperature=self.temperatures[0],
+                                                                pressure=1.0 * unit.bar)]
 
 
     def _save_sub_simulation(self):

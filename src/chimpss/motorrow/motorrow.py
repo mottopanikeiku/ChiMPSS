@@ -91,7 +91,8 @@ class MotorRow():
         self.ligand_name = validate_name(ligand_name) if ligand_name else None
 
 
-    def main(self, pdb_in, restrain_step_5: bool=False, step_5_nsteps: int=1250000, dt: float=2.0):
+    def main(self, pdb_in, restrain_step_5: bool=False, step_5_nsteps: int=1250000, dt: float=2.0,
+             step_5_barostat: str='isotropic', step_5_surface_tension: float=0.0):
         """
         Run the standard five step equilibration
         0 - Minimization
@@ -103,6 +104,13 @@ class MotorRow():
 
         Parameters:
             pdb_in: string: path to the pdb file (same as init) - the initial structure
+            step_5_barostat: 'isotropic' (default, MonteCarloBarostat) or 'membrane'
+                (MonteCarloMembraneBarostat, XY isotropic / Z free). Use 'membrane'
+                when production also runs with the membrane barostat, so that
+                equilibration ends in the production ensemble.
+            step_5_surface_tension: float, bar*nm: surface tension for the
+                step-5 membrane barostat. Default 0 (tensionless; what Amber
+                Lipid17 bilayers are parameterised for).
 
         Returns:
             state_fn: string: path to the XML serialized state file
@@ -145,7 +153,9 @@ class MotorRow():
                 state_fn, pdb_fn = self._run_step(state_fn, stepnum, nsteps=nsteps,
                                                    positions_from_pdb=pdb_fn,
                                                    restrain_lig=restrain_lig,
-                                                   dt=dt)
+                                                   dt=dt,
+                                                   barostat=step_5_barostat if stepnum == 5 else None,
+                                                   surface_tension=step_5_surface_tension)
 
         # If protein/ligand names were provided, rename final outputs with the new convention
         if self.protein_name and self.ligand_name:
@@ -284,7 +294,9 @@ class MotorRow():
                   fn_dcd=None,
                   press=1.0,
                   positions_from_pdb:str=None,
-                  restrain_lig: bool=True):
+                  restrain_lig: bool=True,
+                  barostat: str=None,
+                  surface_tension: float=0.0):
 
         """
         Run different hard-coded Simulations based on the step number
@@ -369,7 +381,14 @@ class MotorRow():
                                                        MonteCarloMembraneBarostat.XYIsotropic,
                                                        MonteCarloMembraneBarostat.ZFree, 100))
         elif stepnum == 5:
-            system.addForce(MonteCarloBarostat(press*bar, temp*kelvin, 100))
+            if barostat in (None, 'isotropic'):
+                system.addForce(MonteCarloBarostat(press*bar, temp*kelvin, 100))
+            elif barostat == 'membrane':
+                system.addForce(MonteCarloMembraneBarostat(press*bar, surface_tension*bar*nanometer, temp*kelvin,
+                                                           MonteCarloMembraneBarostat.XYIsotropic,
+                                                           MonteCarloMembraneBarostat.ZFree, 100))
+            else:
+                raise ValueError(f"step-5 barostat must be 'isotropic' or 'membrane', got {barostat!r}")
 
         else:
             raise NotImplementedError('How did that happen?')

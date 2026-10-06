@@ -57,6 +57,11 @@ parser.add_argument('--conda_env', default=None, type=str,
 parser.add_argument('--getcontacts_python', default=None, type=str,
                     help='Explicit path to the Python interpreter for getContacts. '
                          'When provided, --conda_env is ignored.')
+parser.add_argument('--membrane_barostat', action='store_true',
+                    help='Couple pressure with MonteCarloMembraneBarostat (XY isotropic, '
+                         'Z free) instead of the isotropic MonteCarloBarostat.')
+parser.add_argument('--surface_tension', default=0.0, type=float,
+                    help='Membrane barostat surface tension in bar*nm. Default 0 (tensionless).')
 parser.add_argument('--getcontacts_cores', default=10, type=int,
                     help='CPU cores passed to getContacts via --cores. Default 10.')
 
@@ -94,4 +99,6 @@ market.run(iter_length=args.iter_length,
            max_equil_fraction=args.max_equil_fraction,
            frobenius_thresh=args.frobenius_thresh,
            jsd_thresh=args.jsd_thresh,
-           getContacts_Info=getContacts_Info)
+           getContacts_Info=getContacts_Info,
+           membrane_barostat=args.membrane_barostat,
+           surface_tension=args.surface_tension)
