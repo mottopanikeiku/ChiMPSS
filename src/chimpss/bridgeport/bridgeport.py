@@ -716,9 +716,10 @@ class Bridgeport():
 
 
 
-    def generate_systems(self):
+    def generate_systems(self, _neutralize_pass: int = 0):
         """
         Generate forcefields with OpenFF using the ForcefieldHandler and OpenMMJoiner classes.
+        The final system is neutralized with counterions (see chimpss.shared.system_charge).
         """
         # Create systems dir (self.sys_dir already set in __init__)
         if not os.path.exists(self.sys_dir):
@@ -759,6 +760,26 @@ class Bridgeport():
             self.sys, self.top, self.pos = ForceFieldHandler(self.env_pdb).main()
             print(datetime.now().strftime("%m/%d/%Y %H:%M:%S") + '//' + 'Protein parameters built.', flush=True)
 
+        # Neutralize the FINAL assembled system. The environment is neutralized
+        # around the protein alone and then trimmed, and the ligand charge is
+        # never counted, so the joined system can carry a net charge (the 5-HT2B
+        # systems were +7 to +9 e). Swap bulk waters for counterions and rebuild
+        # once. Opt out with "neutralize": false under "Environment".
+        if self.input_params.get('Environment', {}).get('neutralize', True):
+            from chimpss.shared.system_charge import neutralize_with_counterions, system_net_charge
+            q = system_net_charge(self.sys)
+            if round(q) != 0:
+                if _neutralize_pass > 0:
+                    raise RuntimeError(f'system still carries {q:+.3f} e after neutralization')
+                pdb = PDBFile(self.env_pdb)
+                top, pos, replaced = neutralize_with_counterions(pdb.topology, pdb.positions, q)
+                with open(self.env_pdb, 'w') as f:
+                    PDBFile.writeFile(top, pos, f, keepIds=True)
+                print(datetime.now().strftime("%m/%d/%Y %H:%M:%S") + '//' +
+                      f'Net charge {q:+.3f} e: replaced {len(replaced)} bulk waters with counterions; '
+                      're-parameterizing.', flush=True)
+                return self.generate_systems(_neutralize_pass=_neutralize_pass + 1)
+            print(datetime.now().strftime("%m/%d/%Y %H:%M:%S") + '//' + f'System net charge: {q:+.4f} e', flush=True)
 
         # Get energy
         int = LangevinIntegrator(300 * kelvin, 1/picosecond, 0.001 * picosecond)
