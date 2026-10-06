@@ -1,0 +1,18 @@
+#!/bin/bash
+#SBATCH --job-name="SMOKE_V2"
+#SBATCH --output="/expanse/lustre/projects/iit127/fcetin/5ht2b/v2/logs/fultonmarket/SMOKE_V2.%j.out"
+#SBATCH --partition=shared --nodes=1 --ntasks=1 --cpus-per-task=8 --mem=16G --account=iit127 -t 02:00:00
+# CPU smoke test of the frozen v2 production code: REMD + membrane barostat + resume across sub-sims.
+set -o pipefail
+V2=/expanse/lustre/projects/iit127/fcetin/5ht2b/v2; S=$V2/smoke
+PY=/home/fcetin/miniconda3/envs/chimpss/bin/python
+export JAX_PLATFORMS=cpu XLA_FLAGS="--xla_force_host_platform_device_count=1" OPENMM_CPU_THREADS=8 OPENBLAS_NUM_THREADS=8
+rm -rf $S/out; mkdir -p $S/out
+cd $V2/code && export PYTHONPATH=$V2/code/src
+echo "SMOKE | code $(cat COMMIT) | $(date)"
+$PY $V2/scripts/make_smoke_system.py $S || exit 1
+$PY RUN_FULTONMARKET.py $S/smoke.pdb $S/smoke.xml $S/out --input_state $S/smoke_state.xml \
+    --timestep 2.0 --T_min 300 --T_max 302 --n_replicates 3 --iter_length 0.01 --sim_length 1 --total_sim_time 3 \
+    --membrane_barostat --surface_tension 0 2>&1 | grep -vE 'experimental|^\s*$' | tail -40 || { echo "SMOKE run failed"; exit 1; }
+echo "SMOKE run finished | $(date)"
+$PY $V2/scripts/check_canary.py $S/out $S/smoke.pdb
