@@ -915,8 +915,15 @@ class FultonMarketAnalysis():
         getcontacts_script: str = None,
         conda_env: str = None,
         getcontacts_python: str = None,
+        skip_contacts: bool = False,
     ) -> Tuple[Dict[int, Dict[str, bool]], Dict[int, dict]]:
-        """Evaluate convergence checks as a function of simulation progress."""
+        """Evaluate convergence checks as a function of simulation progress.
+
+        `skip_contacts` must match how the cached matrices were produced
+        (retro_analyze_all(skip_contacts=True) caches torsion + alpha-carbon
+        only). Without it, build_checks adds the two contact rows, which can
+        never pass on absent scores, so STOP would be False at every checkpoint.
+        """
         import tempfile
 
         from chimpss.fultonmarket.retro_convergence import (
@@ -1022,6 +1029,7 @@ class FultonMarketAnalysis():
                         getcontacts_script=getcontacts_script,
                         conda_env=conda_env,
                         getcontacts_python=getcontacts_python,
+                        skip_contacts=skip_contacts,
                         _printf=self._printf,
                     )
 
@@ -1051,6 +1059,7 @@ class FultonMarketAnalysis():
                     jsd_results=jsd_results,
                     frobenius_thresh=frobenius_thresh,
                     jsd_thresh=jsd_thresh,
+                    skip_contacts=skip_contacts,
                 )
 
                 print_sim_report(
