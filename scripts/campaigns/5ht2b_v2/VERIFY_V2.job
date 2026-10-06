@@ -1,0 +1,14 @@
+#!/bin/bash
+#SBATCH --job-name="VERIFY_V2"
+#SBATCH --output="/expanse/lustre/projects/iit127/fcetin/5ht2b/v2/logs/bridgeport/VERIFY_V2.%j.out"
+#SBATCH --partition=shared --nodes=1 --ntasks=1 --cpus-per-task=2 --mem=24G --account=iit127 -t 02:00:00
+# Verify v2 systems, then submit equilibration for each one that passes.
+export OPENBLAS_NUM_THREADS=2
+V2=/expanse/lustre/projects/iit127/fcetin/5ht2b/v2
+for s in "$@"; do
+  if /home/fcetin/miniconda3/envs/chimpss/bin/python $V2/scripts/verify_v2.py "$s"; then
+    echo ">>> $s PASSED -> $(sbatch -J EQUIL_V2_$s $V2/scripts/EQUIL_V2.job $s)"
+  else
+    echo ">>> $s FAILED verification -- NOT equilibrating"
+  fi
+done
