@@ -103,3 +103,23 @@ def test_impossible_spacing_raises_instead_of_crowding():
     top, pos = _solvated_solute()
     with pytest.raises(RuntimeError, match="bulk waters satisfy"):
         neutralize_with_counterions(top, pos, 40, min_ion_dist=2.0)
+
+
+def test_pdb_round_trip_keeps_every_atom(tmp_path):
+    """Adjacent solvent residues must never share a printed id (PDB readers merge them)."""
+    from openmm.app import PDBFile
+
+    top, pos = _solvated_solute()
+    # Mimic Bridgeport's overflowing water ids: ids repeat but neighbours always
+    # differ, so deleting ANY water would make two equal ids adjacent.
+    for k, res in enumerate(r for r in top.residues() if r.name == 'HOH'):
+        res.id = str(k % 2 + 1)
+    new_top, new_pos, _ = neutralize_with_counterions(top, pos, +3)
+
+    for chain in new_top.chains():
+        ids = [r.id for r in chain.residues()]
+        assert all(a != b for a, b in zip(ids, ids[1:]))
+    out = tmp_path / 'neutralized.pdb'
+    with open(out, 'w') as f:
+        PDBFile.writeFile(new_top, new_pos, f, keepIds=True)
+    assert PDBFile(str(out)).topology.getNumAtoms() == new_top.getNumAtoms()

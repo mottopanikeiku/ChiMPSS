@@ -145,9 +145,29 @@ def neutralize_with_counterions(
         r = ion_top.addResidue(resname, chain)
         ion_top.addAtom(atom_name, element, r)
     modeller.add(ion_top, [unit.Quantity(O[w], unit.nanometer) for w in chosen])
+    renumber_solvent_residues(modeller.topology)
 
     return modeller.topology, modeller.positions, [waters[w].index for w in chosen]
 
 
-__all__: Sequence[str] = ('system_net_charge', 'neutralize_with_counterions',
+def renumber_solvent_residues(topology: Topology) -> None:
+    """Give residues in solvent-only chains sequential ids (1..9999, wrapping).
+
+    Water chains hold far more than 9999 residues, so printed PDB residue ids
+    repeat. That is harmless until two residues with the same printed id end up
+    ADJACENT -- e.g. after deleting the water between them -- at which point
+    OpenMM's PDB reader merges them and silently drops the second one's atoms
+    (seen on 5-HT2B methysergide_A225G_mutseq: 3 atoms lost). Sequential ids
+    guarantee neighbours always differ. Chains containing any non-solvent
+    residue (protein, ligand, lipid) are left untouched.
+    """
+    solvent = WATER_RESNAMES | ION_RESNAMES
+    for chain in topology.chains():
+        residues = list(chain.residues())
+        if residues and all(r.name in solvent for r in residues):
+            for k, res in enumerate(residues):
+                res.id = str(k % 9999 + 1)
+
+
+__all__: Sequence[str] = ('system_net_charge', 'neutralize_with_counterions', 'renumber_solvent_residues',
                           'WATER_RESNAMES', 'ION_RESNAMES')
