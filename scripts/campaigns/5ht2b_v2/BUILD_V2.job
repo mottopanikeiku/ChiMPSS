@@ -1,0 +1,19 @@
+#!/bin/bash
+#SBATCH --job-name="BUILD_V2"
+#SBATCH --output="/expanse/lustre/projects/iit127/fcetin/5ht2b/v2/logs/bridgeport/BUILD_V2.%x.%j.out"
+#SBATCH --partition=shared
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=5
+#SBATCH --mem=15G
+#SBATCH --account=iit127
+#SBATCH -t 04:00:00
+# v2 rebuild of one 5-HT2B system: protonated ligand + neutralized system.
+set -eo pipefail
+export OPENBLAS_NUM_THREADS=5 OMP_NUM_THREADS=5
+PREP1=/home/fcetin/miniconda3/envs/prep1
+export PATH="${PREP1}/bin:${PATH}" CONDA_PREFIX="${PREP1}"
+cd /home/fcetin/Bridgeport/Bridgeport
+echo "BUILD_V2 $1 | $(date)"
+"${PREP1}/bin/python" /expanse/lustre/projects/iit127/fcetin/5ht2b/v2/scripts/build_v2.py "$1"
+echo "BUILD_V2 $1 finished rc=$? | $(date)"
