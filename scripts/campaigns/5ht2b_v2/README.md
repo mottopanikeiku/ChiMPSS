@@ -91,6 +91,23 @@ on the real LSD system.
 `DependencyNeverSatisfied`. Read `logs/fultonmarket/CANARY_V2.*.out`, fix the
 problem, then resubmit the canary and launchers.
 
+## Watchdog (every 3 h)
+
+`scripts/WATCHDOG_V2.job` runs `watchdog_v2.py` on the shared CPU partition and
+re-queues itself (`--dependency=singleton`, so only one at a time). Per system,
+it resubmits production if the system is below 60/60 and has **no** job queued,
+which catches a successor sbatch refused under GPU-reservation pressure. It
+submits the convergence check if a finished system lacks one. It **flags
+instead of acting** on a blocked dependency, missing equilibration, a window
+that gave up on setup errors, or no progress after 3 resubmits. A flag makes
+the job exit 1, which sends the SLURM FAIL email. If it cannot identify the
+system of any queued production job, it does nothing that round, because
+double-booking corrupts `output.ncdf`.
+
+    tail -20 logs/watchdog.log                      # one line per system per round
+    python scripts/watchdog_v2.py --dry-run         # what it would do right now
+    scancel -n WATCHDOG_V2                          # stop it
+
 ## Monitoring
 
     squeue -u fcetin -o "%.10i %.28j %.3t %.10M %R"
@@ -103,9 +120,10 @@ its 48 h TIMEOUT. TIMEOUT is normal; read sub-sim counts, not SLURM states.
 
 ## When something stops
 
-- **A system has < 60 and no job in `squeue`.** The chain broke (setup error,
-  `FM_MAX_GEN` cap, or a failed sbatch at T-15 min). Read the last FM_V2 log,
-  then `bash scripts/submit_fm_v2.sh <name>`. Never run two jobs on one system.
+- **A system has < 60 and no job in `squeue`.** The watchdog resubmits it
+  within ~3 h. If it flagged the system instead, read the last FM_V2 log, fix
+  the cause, then `bash scripts/submit_fm_v2.sh <name>`. Never run two jobs on
+  one system.
 - **An equilibration failed.** Resubmit `sbatch -J EQUIL_V2_<name> scripts/EQUIL_V2.job <name>`.
   MotorRow skips completed steps. Then `bash scripts/submit_fm_v2.sh <name>`
   (its launcher will not fire).
