@@ -1,0 +1,17 @@
+#!/bin/bash
+#SBATCH --job-name="CANARY_V2"
+#SBATCH --output="/expanse/lustre/projects/iit127/fcetin/5ht2b/v2/logs/fultonmarket/CANARY_V2.%j.%N.out"
+#SBATCH --partition=gpu-shared --gpus=1 --nodes=1 --ntasks-per-node=10 --mem=90G --account=iit127 -t 02:00:00
+#SBATCH --exclude=exp-1-58
+# Short real-system run of the frozen v2 production code, then automated checks.
+set -o pipefail
+P=/expanse/lustre/projects/iit127/fcetin/5ht2b; V2=$P/v2; S=${1:-LSD}
+CHIMPSS_ENV=/home/fcetin/miniconda3/envs/chimpss
+export PATH="${CHIMPSS_ENV}/bin:${PATH}" CONDA_PREFIX="${CHIMPSS_ENV}"
+cd $V2/code && export PYTHONPATH=$V2/code/src
+OUT=$V2/canary/$S; rm -rf $OUT; mkdir -p $OUT
+echo "CANARY $S | code $(cat COMMIT) | $(date) | $(hostname)"
+"${CHIMPSS_ENV}/bin/python" RUN_FULTONMARKET.py $V2/equil_hmr/$S/step_5.pdb $V2/work_dir/systems_hmr/${S}_FG_HMR.xml $OUT \
+    --input_state $V2/equil_hmr/$S/step_5.xml --timestep 3.5 --T_min 300 --T_max 301 --n_replicates 4 \
+    --iter_length 0.0175 --sim_length 1 --total_sim_time 3 --membrane_barostat --surface_tension 0 || { echo "CANARY run failed rc=$?"; exit 1; }
+"${CHIMPSS_ENV}/bin/python" $V2/scripts/check_canary.py $OUT $V2/equil_hmr/$S/step_5.pdb
