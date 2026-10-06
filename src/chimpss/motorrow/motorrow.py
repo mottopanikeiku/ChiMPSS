@@ -182,6 +182,35 @@ class MotorRow():
         print(f"{name} has energy {self.PE} kJ/mol ", f"with maximum force {max_force} kJ/(mol nm)")
 
 
+    @staticmethod
+    def _partial_name(state_xml_out: str) -> str:
+        root, ext = os.path.splitext(state_xml_out)
+        return f'{root}.partial{ext or ".xml"}'
+
+    def _run_cycles(self, simulation, stepnum, cycles, ncycles, steps_per_cycle, nsteps, dt,
+                    state_xml_out: str, pdb_out: str):
+        """Advance a step cycle by cycle, publishing its outputs only once it completes.
+
+        main() treats an existing step_N.xml as "step N is done" and skips it on
+        restart. The per-cycle checkpoint therefore goes to step_N.partial.xml,
+        and step_N.pdb then step_N.xml (the completion marker, written last) only
+        appear after the final cycle. Previously the checkpoint WAS step_N.xml,
+        so a crash mid-step left a file that made the half-finished step look
+        complete. 5-HT2B methylergonovine_T140A_mutseq hit a NaN 2.5 ns into
+        step 4, and a plain resubmit would have skipped the rest of step 4.
+        """
+        partial_xml = self._partial_name(state_xml_out)
+        for cycle in cycles:
+            print('Cycle', cycle, 'to', ((cycle/ncycles) * ((nsteps * dt) / 1e6)), 'ns')
+            simulation.step(steps_per_cycle)
+            self._describe_state(simulation, f'Step {stepnum}')
+            self._write_state(simulation, partial_xml)
+
+        self._write_structure(simulation, pdb_out)
+        self._write_state(simulation, state_xml_out)
+        if os.path.exists(partial_xml):
+            os.remove(partial_xml)
+
     def _write_state(self, sim: Simulation, xml_fn: str):
         """
         Serialize the State of an OpenMM Simulation to an XML file.
@@ -444,19 +473,14 @@ class MotorRow():
         print('nsteps', nsteps)
         print('dt', dt)
         print('steps_per_cycle', steps_per_cycle)
-        for cycle in range(cycles_completed+1, ncycles+1):
-            print('Cycle', cycle, 'to', ((cycle/ncycles) * ((nsteps * dt) / 1e6)), 'ns')
-            simulation.step(steps_per_cycle)
-            self._describe_state(simulation, f'Step {stepnum}')
-            self._write_state(simulation, state_xml_out)
+        if pdb_out is None:
+            pdb_out = os.path.join(self.abs_work_dir, f'step_{stepnum}.pdb')
+        self._run_cycles(simulation, stepnum, range(cycles_completed+1, ncycles+1), ncycles,
+                         steps_per_cycle, nsteps, dt, state_xml_out, pdb_out)
 
         end = datetime.now() - start
         print(f'Step {stepnum} completed after {end}')
         print(f'Box Vectors after this step {simulation.system.getDefaultPeriodicBoxVectors()}')
-
-        if pdb_out is None:
-            pdb_out = os.path.join(self.abs_work_dir, f'step_{stepnum}.pdb')
-        self._write_structure(simulation, pdb_out)
 
         for i in range(3):
             print('########################################################################################')
