@@ -1,0 +1,7 @@
+#!/bin/bash
+#SBATCH --job-name="LAUNCH_FM_V2"
+#SBATCH --output="/expanse/lustre/projects/iit127/fcetin/5ht2b/v2/logs/fultonmarket/LAUNCH_FM_V2.%j.out"
+#SBATCH --partition=shared --nodes=1 --ntasks=1 --cpus-per-task=1 --mem=1G --account=iit127 -t 00:15:00
+# Submits the first v2 production job for one system; later windows self-resubmit.
+echo "LAUNCH $1 | $(date)"
+bash /expanse/lustre/projects/iit127/fcetin/5ht2b/v2/scripts/submit_fm_v2.sh "$1"
