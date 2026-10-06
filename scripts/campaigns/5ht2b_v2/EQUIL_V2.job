@@ -1,0 +1,17 @@
+#!/bin/bash
+#SBATCH --job-name="EQUIL_V2"
+#SBATCH --output="/expanse/lustre/projects/iit127/fcetin/5ht2b/v2/logs/equil/EQUIL_V2.%x.%j.out"
+#SBATCH --partition=gpu-shared
+#SBATCH --gpus=1
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --mem=8G
+#SBATCH --account=iit127
+#SBATCH -t 08:00:00
+#SBATCH --exclude=exp-1-58
+set -eo pipefail
+PREP1=/home/fcetin/miniconda3/envs/prep1
+export PATH="${PREP1}/bin:${PATH}" CONDA_PREFIX="${PREP1}"
+echo "EQUIL_V2 $1 | $(date) | $(hostname)"
+"${PREP1}/bin/python" /expanse/lustre/projects/iit127/fcetin/5ht2b/v2/scripts/run_motorrow_v2.py "$1" --dt 3.5
+echo "EQUIL_V2 $1 finished rc=$? | $(date)"
