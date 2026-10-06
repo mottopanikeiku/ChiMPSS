@@ -7,7 +7,7 @@
 #SBATCH --ntasks=1
 #SBATCH --mem=8G
 #SBATCH --account=iit127
-#SBATCH -t 08:00:00
+#SBATCH -t 03:00:00
 #SBATCH --exclude=exp-1-58
 set -eo pipefail
 PREP1=/home/fcetin/miniconda3/envs/prep1
