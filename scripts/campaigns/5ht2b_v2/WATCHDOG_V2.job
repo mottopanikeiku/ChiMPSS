@@ -1,0 +1,22 @@
+#!/bin/bash
+#SBATCH --job-name="WATCHDOG_V2"
+#SBATCH --output="/expanse/lustre/projects/iit127/fcetin/5ht2b/v2/logs/watchdog/WATCHDOG_V2.%j.out"
+#SBATCH --partition=shared --nodes=1 --ntasks=1 --cpus-per-task=1 --mem=2G --account=iit127 -t 00:20:00
+#SBATCH --mail-type=FAIL
+# Every WATCHDOG_INTERVAL: resubmit any v2 system that is < 60/60 with no job queued
+# (see watchdog_v2.py). Exits 1 -- triggering the FAIL email -- when a system is
+# flagged for a human. --dependency=singleton guarantees one watchdog at a time.
+V2=/expanse/lustre/projects/iit127/fcetin/5ht2b/v2
+SELF=$V2/scripts/WATCHDOG_V2.job
+INTERVAL=${WATCHDOG_INTERVAL:-3hours}
+out=$(/home/fcetin/miniconda3/envs/chimpss/bin/python $V2/scripts/watchdog_v2.py 2>&1); rc=$?
+echo "$out" | tee -a $V2/logs/watchdog.log
+# Queue the next round BEFORE exiting, unless every system is finished.
+if ! grep -q '^ALL_DONE=1' <<< "$out"; then
+    if [ "$(squeue -u "$USER" -h -n WATCHDOG_V2 -t PENDING | wc -l)" -eq 0 ]; then
+        echo "next watchdog: $(sbatch --parsable --dependency=singleton --begin=now+${INTERVAL} $SELF 2>&1) (in ${INTERVAL})" | tee -a $V2/logs/watchdog.log
+    fi
+else
+    echo "all systems done -- watchdog not re-queued" | tee -a $V2/logs/watchdog.log
+fi
+exit $rc
