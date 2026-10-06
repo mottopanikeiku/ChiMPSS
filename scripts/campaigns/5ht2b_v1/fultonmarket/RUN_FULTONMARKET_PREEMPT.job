@@ -1,0 +1,104 @@
+#!/bin/bash
+#SBATCH --job-name="FM_HMR"
+#SBATCH --output="/expanse/lustre/projects/iit127/fcetin/5ht2b/logs/fultonmarket_hmr/FM_HMR.%j.%N.out"
+#SBATCH --partition=gpu-preempt
+#SBATCH --gpus=1
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=10
+#SBATCH --mem=90G
+#SBATCH --account=iit127
+#SBATCH -t 7-00:00:00
+#SBATCH --mail-type=END,FAIL
+#SBATCH --requeue
+#SBATCH --open-mode=append
+#SBATCH --exclude=exp-1-58
+
+# Args are passed straight through to ChiMPSS's RUN_FULTONMARKET.py.
+# See submit_5ht2b_fultonmarket_hmr.sh for the per-system call.
+
+source ~/.bashrc
+
+# Use the env's python directly. `conda activate` in non-interactive SLURM
+# context has bitten us once (silent fallthrough → missing jax). The chimpss
+# env is fully self-contained, so calling its python by absolute path is the
+# safest pattern. Mirror the activation's side-effects (PATH + CONDA_PREFIX)
+# for any tooling that introspects them.
+CHIMPSS_ENV=/home/fcetin/miniconda3/envs/chimpss
+export PATH="${CHIMPSS_ENV}/bin:${PATH}"
+export CONDA_PREFIX="${CHIMPSS_ENV}"
+export CONDA_DEFAULT_ENV=chimpss
+
+# ChiMPSS's RUN_FULTONMARKET.py uses `from FultonMarket.FultonMarketwithAnalyzer ...`,
+# which resolves against the ChiMPSS repo root layout (FultonMarket/ subdir).
+# Inside that file, it re-exports from `chimpss.fultonmarket`, so we also need
+# the chimpss package on PYTHONPATH (it is not pip-installed).
+cd /home/fcetin/ChiMPSS
+export PYTHONPATH=/home/fcetin/ChiMPSS/src:${PYTHONPATH}
+
+echo "FULTONMARKET HMR BATCH JOB args: $@"
+echo "  python = $(which python)"
+echo "  PYTHONPATH = ${PYTHONPATH}"
+
+# ---------------------------------------------------------------------------
+# Self-healing retry loop.
+#
+# REMD replicas blow up stochastically (~1 NaN per 150-200 ns of aggregate
+# sampling). openmmtools retries 4x, then raises SimulationNaNError and the
+# python process exits non-zero -- which used to end the whole SLURM job even
+# with 30+ h of allocation left. `--requeue` does NOT cover this; it only
+# covers preemption and node failure.
+#
+# Resuming is safe: each attempt picks up from the last completed sub-sim in
+# saved_variables/ (the resume patch, commit 1b60417), and python exits 0 only
+# once total_sim_time is reached (the time-only-stop patch). So we can simply
+# re-invoke until it succeeds or SLURM takes the wall clock away.
+#
+# Guard against spinning on a NON-recoverable error: a real NaN costs at least
+# several minutes of GPU work before it raises, so any failure faster than
+# MIN_REAL_RUN is treated as a setup error (bad import, corrupt save dir) and
+# only tolerated a few times.
+# ---------------------------------------------------------------------------
+MAX_RETRIES=30
+MAX_FAST_FAILS=3
+MIN_REAL_RUN=300          # seconds; below this a failure is "fast"
+
+OUT_DIR="$3"              # 3rd positional arg is the FultonMarket output dir
+n_saved() { ls "${OUT_DIR}/saved_variables" 2>/dev/null | wc -l; }
+
+attempt=0
+fast_fails=0
+start_saved=$(n_saved)
+
+while true; do
+    echo "=== attempt ${attempt} | sub-sims saved so far: $(n_saved) | $(date) ==="
+    t0=$SECONDS
+    "${CHIMPSS_ENV}/bin/python" RUN_FULTONMARKET.py "$@"
+    rc=$?
+    elapsed=$((SECONDS - t0))
+
+    if [ "$rc" -eq 0 ]; then
+        echo "=== python exited 0 after ${elapsed}s -- target reached. ==="
+        break
+    fi
+
+    if [ "$elapsed" -lt "$MIN_REAL_RUN" ]; then
+        fast_fails=$((fast_fails + 1))
+        echo "=== FAST FAILURE (rc=${rc}) after only ${elapsed}s"           \
+             "-- ${fast_fails}/${MAX_FAST_FAILS}; likely a setup error, not a NaN ==="
+        if [ "$fast_fails" -ge "$MAX_FAST_FAILS" ]; then
+            echo "=== giving up: ${fast_fails} fast failures in a row-ish ==="
+            break
+        fi
+    else
+        echo "=== exit ${rc} after ${elapsed}s (expected NaN) -- resuming ==="
+    fi
+
+    attempt=$((attempt + 1))
+    if [ "$attempt" -ge "$MAX_RETRIES" ]; then
+        echo "=== giving up after ${attempt} retries ==="
+        break
+    fi
+    sleep 30
+done
+
+echo "=== JOB END $(date) | sub-sims: ${start_saved} -> $(n_saved) | retries used: ${attempt} ==="

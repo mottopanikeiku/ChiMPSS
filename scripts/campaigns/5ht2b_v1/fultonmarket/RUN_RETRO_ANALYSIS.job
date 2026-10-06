@@ -1,0 +1,68 @@
+#!/bin/bash
+#SBATCH --job-name="FM_RETRO"
+#SBATCH --output="/expanse/lustre/projects/iit127/fcetin/5ht2b/logs/retro/FM_RETRO.%j.%N.out"
+#SBATCH --partition=shared
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=8
+#SBATCH --mem=64G
+#SBATCH --account=iit127
+#SBATCH -t 12:00:00
+#SBATCH --mail-type=END,FAIL
+#SBATCH --open-mode=append
+
+# Retroactive convergence analysis for a completed FultonMarket system.
+#
+# This is CPU work (MDTraj + MBAR), so it runs on the `shared` partition and
+# charges the CPU allocation -- it does NOT compete with the production REMD
+# jobs for GPU reservation budget.
+#
+# Usage:
+#   sbatch RUN_RETRO_ANALYSIS.job <system_name> [extra RUN_RETRO_ANALYSIS.py args]
+#
+# Produces resampled_{torsion,alpha_carbon}_matrix.npy per sub-simulation under
+# <output>/retro_cache/, which is the evidence the convergence check needs.
+
+set -u
+
+SYS="$1"; shift
+
+PROJ=/expanse/lustre/projects/iit127/fcetin/5ht2b
+INPUT_DIR="${PROJ}/fultonmarket_hmr/${SYS}"
+PDB="${PROJ}/equil_hmr/${SYS}/step_5.pdb"
+
+CHIMPSS_ENV=/home/fcetin/miniconda3/envs/chimpss
+export PATH="${CHIMPSS_ENV}/bin:${PATH}"
+export CONDA_PREFIX="${CHIMPSS_ENV}"
+export CONDA_DEFAULT_ENV=chimpss
+
+# JAX/BLAS thread control. On constrained nodes JAX's XLA CPU client fails with
+# "Thread tf_XLAPjRtCpuClient creation via pthread_create() failed" if it tries
+# to spin up one thread per core; pin it to the cores we actually requested.
+export JAX_PLATFORMS=cpu
+export XLA_FLAGS="--xla_force_host_platform_device_count=1"
+export OPENBLAS_NUM_THREADS=4
+export OMP_NUM_THREADS=4
+export MKL_NUM_THREADS=4
+export NUMEXPR_NUM_THREADS=4
+
+cd /home/fcetin/ChiMPSS
+export PYTHONPATH=/home/fcetin/ChiMPSS/src:${PYTHONPATH:-}
+
+echo "=== FM_RETRO ${SYS} | $(date) ==="
+echo "  input_dir = ${INPUT_DIR}"
+echo "  pdb       = ${PDB}"
+echo "  extra     = $*"
+
+for f in "${PDB}"; do
+    [ -f "$f" ] || { echo "ERROR: missing $f" >&2; exit 1; }
+done
+[ -d "${INPUT_DIR}/saved_variables" ] || { echo "ERROR: no saved_variables in ${INPUT_DIR}" >&2; exit 1; }
+
+"${CHIMPSS_ENV}/bin/python" RUN_RETRO_ANALYSIS.py \
+    "${INPUT_DIR}" "${PDB}" \
+    --skip_contacts \
+    "$@"
+
+rc=$?
+echo "=== FM_RETRO ${SYS} exited ${rc} | $(date) ==="
+exit $rc
