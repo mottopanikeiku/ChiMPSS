@@ -177,8 +177,21 @@ class Randolph():
         self.reporter = MultiStateReporter(self.output_ncdf,
                                            checkpoint_interval=self.checkpoint_interval,
                                            analysis_particle_indices=atom_inds)
+        # Pass ONE SamplerState PER REPLICA. Passing a single SamplerState makes
+        # openmmtools copy it to every replica, so each sub-simulation would
+        # restart all replicas from the state-0 (T_min) configuration and throw
+        # away the per-replica positions/velocities/boxes that
+        # FultonMarket._load_initial_args carefully reorders. That regression
+        # (`self.sampler_states[0]`, introduced in the Phase 4 port; the
+        # original FultonMarket passed the full list) reset every replica every
+        # sub-simulation for the entire 5-HT2B campaign.
+        if len(self.sampler_states) != self.n_replicates:
+            raise ValueError(
+                f'{len(self.sampler_states)} sampler states for {self.n_replicates} '
+                f'replicas; need exactly one per replica.'
+            )
         self.simulation.create(thermodynamic_state=self.reference_state,
-                               sampler_states=self.sampler_states[0],
+                               sampler_states=self.sampler_states,
                                storage=self.reporter,
                                temperatures=self.temperatures,
                                n_temperatures=self.n_replicates)
