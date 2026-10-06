@@ -34,6 +34,29 @@ aggregate target.
    `scripts/submit_fm_v2.sh` and resubmit. FultonMarket resumes from
    `saved_variables/`. Let `chimpss-convergence` decide whether to.
 
+## Log
+
+- **2026-10-06 ~06:16: canary FAILED on a wrong check, not on the simulation.**
+  The check required box x == y, but XY-isotropic coupling keeps the x/y
+  *ratio* constant; the real boxes are rectangular, and the CPU smoke test used
+  a cube. Every continuity check passed. Fixed in `check_canary.py`; the re-run
+  check on the same output passes
+  (`logs/fultonmarket/CANARY_V2.54695077.recheck.log`: x/y constant to 3.4e-7,
+  x/z varies 1.7%).
+- **2026-10-06 ~11:55: production launched by hand** for the 8 equilibrated
+  systems, since the launchers were blocked by the canary's failed exit code:
+  FM_V2 54708710 (LSD), 54708711 (lisuride), 54708712 (methylergonovine),
+  54708713 (methysergide), 54708714 (LY266097), 54708715 (lisuride_L362F),
+  54708716 (LSD_L362F), 54708717 (methysergide_A225G). All carry
+  `--membrane_barostat --surface_tension 0`; each later window self-resubmits.
+- **methylergonovine_T140A_mutseq**: equilibration NaN'd 2.54 ns into MotorRow
+  step 4 (the original v1 step; stable at ~300 K until then), consistent with
+  stochastic 3.5 fs blow-ups. The partial step-4 files were moved to
+  `equil_hmr/methylergonovine_T140A_mutseq/failed_attempt_1_step4_NaN/`; a plain
+  resubmit would have *skipped* the rest of step 4 because MotorRow wrote its
+  per-cycle checkpoint to `step_4.xml` (fixed in ChiMPSS; checkpoints now go to
+  `step_N.partial.xml`). Rerun: EQUIL 54708724, then launcher 54708725 (afterok).
+
 ## Layout
 
     v2/json/<name>.json            Bridgeport input (protonated SMILES, v2 working_dir)
