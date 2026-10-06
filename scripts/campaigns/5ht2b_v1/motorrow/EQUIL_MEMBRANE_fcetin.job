@@ -1,0 +1,19 @@
+#!/bin/bash
+#SBATCH --job-name="EQUIL"
+#SBATCH --output="/expanse/lustre/projects/iit127/fcetin/5ht2b/logs/equil/EQUIL.%j.%N.out"
+#SBATCH --partition=gpu-shared
+#SBATCH --gpus=1
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --mem=8G
+#SBATCH --account=iit127
+#SBATCH -t 6:00:00
+
+source ~/.bashrc
+
+conda activate prep1
+
+cd /home/fcetin/MotorRow
+
+echo EQUIL BATCH JOB FOR $2
+python EQUIL_MEMBRANE.py $1 $2 $3 --lig-resname $4
