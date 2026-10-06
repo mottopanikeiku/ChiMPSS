@@ -1,0 +1,41 @@
+{
+      "working_dir": "/expanse/lustre/projects/iit127/fcetin/5ht2b/work_dir",
+      "Protein": {
+            "input_pdb_dir": "/expanse/lustre/projects/iit127/fcetin/5ht2b/prep/input_pdbs/experimental",
+            "input_pdb": "6DRX.pdb",
+            "chain": "A"
+      },
+      "Ligand": {
+            "name": "lisuride_L362F",
+            "resname": "H8G",
+            "chainid": false,
+            "smiles": "CCN(CC)C(=O)N[C@@H]1CN([C@@H]2Cc3c[nH]c4c3c(ccc4)C2=C1)C",
+            "small_molecule_params": true,
+            "sanitize": true,
+            "removeHs": true,
+            "proximityBonding": false,
+            "nstd_resids": null,
+            "pH": 7.0,
+            "neutral_Cterm": false
+      },
+      "Environment": {
+            "alignment_ref": "/expanse/lustre/projects/iit127/fcetin/5ht2b/prep/input_pdbs/opm_refs/6DRX_opm.pdb",
+            "reference_chain": [
+                  "A"
+            ],
+            "membrane": true,
+            "pH": 7.2,
+            "ion_strength": 0.15
+      },
+      "RepairProtein": {
+            "fasta_path": "/expanse/lustre/projects/iit127/fcetin/5ht2b/prep/fasta/5HT2B.fasta",
+            "working_dir": "/home/fcetin/Bridgeport/interactive/modeller_intermediates",
+            "tails": [
+                  47,
+                  400
+            ],
+            "loops": false,
+            "secondary_template": "/expanse/lustre/projects/iit127/fcetin/5ht2b/prep/input_pdbs/alphafold/human/AF-P41595-F1-model_v6.pdb",
+            "engineered_resids": null
+      }
+}
