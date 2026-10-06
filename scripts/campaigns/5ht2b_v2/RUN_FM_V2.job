@@ -1,0 +1,116 @@
+#!/bin/bash
+#SBATCH --job-name="FM_V2"
+#SBATCH --output="/expanse/lustre/projects/iit127/fcetin/5ht2b/v2/logs/fultonmarket/FM_V2.%j.%N.out"
+#SBATCH --partition=gpu-shared
+#SBATCH --gpus=1
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=10
+#SBATCH --mem=90G
+#SBATCH --account=iit127
+#SBATCH -t 48:00:00
+#SBATCH --mail-type=FAIL
+#SBATCH --requeue
+#SBATCH --exclude=exp-1-58
+#SBATCH --signal=B:USR1@900
+
+# v2 FultonMarket production for one 5-HT2B system. Args go straight through to
+# RUN_FULTONMARKET.py (see submit_fm_v2.sh). Differences from the v1 job script:
+#
+#  * Runs a FROZEN code snapshot (../code, commit in code/COMMIT), so edits to
+#    the working tree can never change or break a running campaign.
+#  * SELF-RESUBMITS. The v1 campaign lost 8.3 days, then 41 days, to nobody
+#    resubmitting after a 48 h TIMEOUT. SLURM signals USR1 15 min before the
+#    wall clock; the trap submits a successor that waits on THIS job
+#    (afterany), which preserves the one-job-per-system rule. A job that ends
+#    because the target was reached, or that hits setup errors, never gets the
+#    signal and so never resubmits. FM_MAX_GEN caps the chain.
+#  * Same bounded NaN retry loop as v1.
+
+source ~/.bashrc
+
+CHIMPSS_ENV=/home/fcetin/miniconda3/envs/chimpss
+export PATH="${CHIMPSS_ENV}/bin:${PATH}"
+export CONDA_PREFIX="${CHIMPSS_ENV}"
+export CONDA_DEFAULT_ENV=chimpss
+FM_PY=${FM_PY:-${CHIMPSS_ENV}/bin/python}          # override only for testing the job logic
+
+CODE=${FM_CODE:-/expanse/lustre/projects/iit127/fcetin/5ht2b/v2/code}
+SELF=${FM_SELF:-/expanse/lustre/projects/iit127/fcetin/5ht2b/v2/scripts/RUN_FM_V2.job}
+cd "${CODE}"
+export PYTHONPATH="${CODE}/src"
+
+ARGS=("$@")
+OUT_DIR="$3"
+GEN=${FM_GEN:-0}
+MAX_GEN=${FM_MAX_GEN:-25}
+n_saved() { ls "${OUT_DIR}/saved_variables" 2>/dev/null | wc -l; }
+
+echo "FULTONMARKET V2 BATCH JOB (gen ${GEN}) args: $*"
+echo "  code snapshot: $(cat COMMIT 2>/dev/null)"
+echo "  python = ${FM_PY}"
+
+RESUBMITTED=0
+resubmit() {
+    [ "${RESUBMITTED}" = 1 ] && return
+    RESUBMITTED=1
+    if [ "${GEN}" -ge "${MAX_GEN}" ]; then
+        echo "=== walltime near, but generation cap ${MAX_GEN} reached: NOT resubmitting ==="
+        return
+    fi
+    local jid
+    jid=$(sbatch --parsable --export=ALL,FM_GEN=$((GEN + 1)) \
+                 --dependency=afterany:"${SLURM_JOB_ID}" "${SELF}" "${ARGS[@]}" 2>&1)
+    echo "=== walltime near ($(n_saved) sub-sims saved): successor ${jid} (gen $((GEN + 1))) | $(date) ==="
+}
+trap resubmit USR1
+
+MAX_RETRIES=30
+MAX_FAST_FAILS=3
+MIN_REAL_RUN=${FM_MIN_REAL_RUN:-300}   # seconds; below this a failure is "fast" (setup error, not a NaN)
+
+attempt=0
+fast_fails=0
+start_saved=$(n_saved)
+
+while true; do
+    echo "=== attempt ${attempt} | sub-sims saved so far: $(n_saved) | $(date) ==="
+    t0=$SECONDS
+    # Background + wait so the USR1 trap runs immediately instead of after python exits.
+    "${FM_PY}" RUN_FULTONMARKET.py "${ARGS[@]}" &
+    pid=$!
+    while true; do
+        wait "${pid}"; rc=$?
+        kill -0 "${pid}" 2>/dev/null || break      # wait returned because of the trap; keep waiting
+    done
+    elapsed=$((SECONDS - t0))
+
+    if [ "$rc" -eq 0 ]; then
+        echo "=== python exited 0 after ${elapsed}s -- target reached. ==="
+        break
+    fi
+    if [ "$elapsed" -lt "$MIN_REAL_RUN" ]; then
+        fast_fails=$((fast_fails + 1))
+        echo "=== FAST FAILURE (rc=${rc}) after only ${elapsed}s -- ${fast_fails}/${MAX_FAST_FAILS}; likely a setup error, not a NaN ==="
+        if [ "$fast_fails" -ge "$MAX_FAST_FAILS" ]; then
+            echo "=== giving up: ${fast_fails} fast failures ==="
+            break
+        fi
+    else
+        echo "=== exit ${rc} after ${elapsed}s (expected NaN) -- resuming ==="
+    fi
+    attempt=$((attempt + 1))
+    if [ "$attempt" -ge "$MAX_RETRIES" ]; then
+        echo "=== giving up after ${attempt} retries ==="
+        break
+    fi
+    sleep 30
+done
+
+# Target reached in THIS job (not a no-op successor): assess convergence automatically.
+if [ "$rc" -eq 0 ] && [ "$(n_saved)" -gt "${start_saved}" ]; then
+    cj=$(sbatch --parsable -J "CONV_$(basename "${OUT_DIR}")" \
+         /expanse/lustre/projects/iit127/fcetin/5ht2b/v2/scripts/CONVERGENCE.job "${OUT_DIR}" "${ARGS[0]}" 2>&1)
+    echo "=== target reached: submitted convergence assessment ${cj} ==="
+fi
+
+echo "=== JOB END $(date) | sub-sims: ${start_saved} -> $(n_saved) | retries used: ${attempt} | resubmitted: ${RESUBMITTED} ==="
