@@ -342,35 +342,49 @@ def resample_with_MBAR(objs: List, u_kln: np.array, N_k: np.array, size: int, re
     return return_list
 
 
-def compute_MBAR_weights(u_kln, N_k):
+def compute_MBAR_weights(u_kln, N_k, tol: float = 1e-6):
     """
-    Compute MBAR sample weights, tolerating a broken BAR initialiser.
+    Compute MBAR sample weights, and refuse to return an unconverged solution.
 
-    `initialize='BAR'` is only a warm start for the self-consistent solver, but
-    in the installed pymbar it is a hard failure whenever any state pair lacks
-    overlap: `MBAR._initialize_with_bar` wraps its `bar()` call in
-    `except ConvergenceError:`, and `ConvergenceError` is never imported into
-    `pymbar/mbar.py` (it lives in `pymbar/utils.py`). `bar()` legitimately
-    raises `BoundsError`/`ConvergenceError` on poor overlap, and evaluating the
-    except clause then dies with `NameError: name 'ConvergenceError' is not
-    defined`. That killed 29 of 60 sub-simulations in the 2026-08-14 retro run.
+    Initialisation matters here. Reduced potentials in these REMD runs are
+    ~5e5 kT, so the f_k span ~1e5 kT across the ladder:
 
-    Poor overlap is expected at low sim_no, where only a few sub-simulations'
-    worth of frames exist, so fall back to the default zeros initialisation
-    rather than losing the sub-simulation. The converged weights are the same;
-    only the number of solver iterations differs.
+    * `initialize='zeros'` (pymbar's default) starts ~1e5 kT away. On 5-HT2B
+      data it ran 10,000 iterations (18 min) and still failed ("No solution
+      found", self-consistency residual ~1e5, weights not normalised).
+    * `initialize='BAR'` is unusable in pymbar 4.2.0 whenever a state pair
+      lacks overlap: `_initialize_with_bar` catches `ConvergenceError`, which
+      `pymbar/mbar.py` never imports, so it dies with NameError.
+    * `initialize='mean-reduced-potential'` starts each f_k at the mean reduced
+      potential of its own samples. On the same data it converged in 4 s to a
+      residual of 5e-11 with n_eff(300 K) ~1100.
+
+    pymbar prints "No solution found" and still returns its best guess, and the
+    old code then resampled with those weights. So the result is checked here
+    against the MBAR self-consistency equations and rejected if the largest
+    free-energy residual exceeds `tol` (kT).
     """
+    from scipy.special import logsumexp
+
     try:
-        mbar = MBAR(u_kln, N_k, initialize='BAR')
+        mbar = MBAR(u_kln, N_k, initialize='mean-reduced-potential')
     except Exception as exc:
-        # NameError is the pymbar bug above; other failures here are equally
-        # confined to the warm start, so retry without it before giving up.
-        # Always emitted: FultonMarketAnalysis._printf defaults to level='all',
-        # which verbosity='minimal' suppresses, and a fallback that changes the
-        # solver path must stay visible in the log.
-        printf(f"MBAR BAR-initialisation failed ({type(exc).__name__}: {exc}); "
-             f"falling back to zeros initialisation.")
+        printf(f"MBAR mean-reduced-potential initialisation failed "
+               f"({type(exc).__name__}: {exc}); retrying from zeros.")
         mbar = MBAR(u_kln, N_k)
+
+    u = np.asarray(u_kln, dtype=np.float64)
+    if u.ndim == 2 and u.shape[0] > 1:
+        f = np.asarray(mbar.f_k, dtype=np.float64)
+        n_k = np.asarray(N_k, dtype=np.float64)
+        log_denom = logsumexp(f[:, None] - u, b=n_k[:, None], axis=0)
+        f_new = -logsumexp(-u - log_denom[None, :], axis=1)
+        residual = float(np.max(np.abs((f_new - f_new[0]) - (f - f[0]))))
+        if not np.isfinite(residual) or residual > tol:
+            raise RuntimeError(
+                f'MBAR did not converge: max self-consistency residual '
+                f'{residual:.3e} kT > tol {tol:.1e}. Refusing to use these weights.'
+            )
 
     return mbar.weights()
 
