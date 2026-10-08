@@ -29,16 +29,27 @@ for k in segs[1:]:
     X, Xp = pos(k), pos(k - 1)
     nr = X.shape[1]
     last_states = np.load(os.path.join(sv, str(k - 1), 'states.npy'))[-1]
-    # replica i of the new sub-sim starts in state i, from whichever replica held state i
-    worst = 0.0
+    T_new = np.load(os.path.join(sv, str(k), 'temperatures.npy'))
+    T_old = np.load(os.path.join(sv, str(k - 1), 'temperatures.npy'))
+    # Replica i of the new sub-sim starts in state i (temperature T_new[i]), from
+    # whichever replica held that TEMPERATURE at the end of the previous sub-sim.
+    # Matching by temperature handles ladder growth: FultonMarket can insert
+    # states after sub-sim 0, and inserted states have no predecessor.
+    worst, inserted = 0.0, 0
     for i in range(nr):
-        r = int(np.where(last_states == i)[0][0])
+        j = np.where(np.abs(T_old - T_new[i]) < 1e-6)[0]
+        if len(j) == 0:
+            inserted += 1
+            continue
+        r = int(np.where(last_states == j[0])[0][0])
         worst = max(worst, float(np.abs(np.asarray(X[0, i]) - np.asarray(Xp[-1, r])).max()))
-    need(worst < 1e-3, f'sub-sim {k}: every replica starts where its state ended in sub-sim {k-1} (max |d| {worst:.1e} nm)')
+    note = f'; {inserted} newly inserted state(s) skipped' if inserted else ''
+    need(worst < 1e-3, f'sub-sim {k}: every replica starts where its state ended in sub-sim {k-1} (max |d| {worst:.1e} nm{note})')
     spread = max(float(np.sqrt(((np.asarray(X[0, 0]) - np.asarray(X[0, i])) ** 2).sum(-1).mean())) for i in range(1, nr))
     need(spread > 0.02, f'sub-sim {k}: replicas start from DIFFERENT structures (max RMS vs replica 0 {spread:.3f} nm)')
-B = np.concatenate([np.load(os.path.join(sv, str(k), 'box_vectors.npy')) for k in segs])
-Lx, Ly, Lz = B[..., 0, 0], B[..., 1, 1], B[..., 2, 2]
+# Per segment, then flattened: the replica count can change between segments.
+Bs = [np.load(os.path.join(sv, str(k), 'box_vectors.npy')) for k in segs]
+Lx, Ly, Lz = (np.concatenate([b[..., a, a].ravel() for b in Bs]) for a in range(3))
 # XY isotropic scales x and y by the SAME factor: their ratio is invariant.
 # (x == y only holds for a square start; the 5-HT2B boxes are rectangular.)
 rxy = Lx / Ly
