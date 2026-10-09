@@ -6,7 +6,7 @@
 | neutralization | ChiMPSS `0a3c324` for 8 systems; methysergide_A225G_mutseq rebuilt at `9a59cce` after the residue-renumbering fix (the first attempt lost 3 atoms on PDB re-read and stopped) | prep1 |
 | HMR + force groups | `chimpss.bridgeport._utils`, unchanged since v1, verified bit-for-bit | prep1 |
 | equilibration | ChiMPSS MotorRow @ `0a3c324`+ (step-5 membrane barostat option) | prep1 |
-| production | **frozen snapshot** `5ht2b/v2/code` = ChiMPSS `0a3c324`, tag `5ht2b-v2-production` | chimpss |
+| production | **frozen snapshot** `5ht2b/v2/code`: ChiMPSS `0a3c324` (tag `5ht2b-v2-production`) for windows started before 2026-10-09 ~16:00; `381a6c6` (tag `5ht2b-v2-production-2`, adds the interrupted-sub-sim-0 resume) after | chimpss |
 | convergence | ChiMPSS `chimpss-convergence` (`3f36d8a`+), commit logged in each CONV log | chimpss |
 
 Build and verification logs: `5ht2b/v2/logs/bridgeport/`. All nine systems

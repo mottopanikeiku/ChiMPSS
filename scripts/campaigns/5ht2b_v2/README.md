@@ -57,6 +57,22 @@ aggregate target.
   per-cycle checkpoint to `step_4.xml` (fixed in ChiMPSS; checkpoints now go to
   `step_N.partial.xml`). Rerun: EQUIL 54708724, then launcher 54708725 (afterok).
 
+- **2026-10-08/09: first window boundary.** All 8 original windows hit the 48 h
+  TIMEOUT and their self-submitted successors took over (~11 h GPU-queue wait;
+  no chain broke). 77/540 sub-sims saved by 10-09 15:30.
+- **2026-10-09: methylergonovine_T140A_mutseq stalled at 0/60.** Its first window
+  grew the ladder 68 -> 180 states over 28 rebuilds and ended ~40 min before
+  sub-sim 0 would have saved. Every later run then printed 'Trajectory already
+  exists', exited 0 having done nothing, and was read as success; the watchdog
+  resubmitted it three times. Two fixes:
+  (1) FultonMarket (ChiMPSS `381a6c6`): an interrupted sub-sim 0 now restarts
+  with the ladder it had grown (read from output.ncdf; partial files kept as
+  `*.interrupted_subsim0`);
+  (2) `RUN_FM_V2.job`: exit 0 only counts as done when 60 sub-sims exist.
+  **Production snapshot updated to `381a6c6`** (tag `5ht2b-v2-production-2`;
+  `fulton_market.py` is the only production-path change; old snapshot kept as
+  `code.0a3c324`). T140A's queued job 54800646 runs the new code.
+
 ## Layout
 
     v2/json/<name>.json            Bridgeport input (protonated SMILES, v2 working_dir)
@@ -144,7 +160,7 @@ independent samples per half: clearly not converged.
 
 ## Code snapshot policy
 
-Production imports only `v2/code/` (ChiMPSS `0a3c324`), never the live repo, so
+Production imports only `v2/code/` (ChiMPSS `381a6c6` since 2026-10-09; was `0a3c324`), never the live repo, so
 working-tree edits cannot touch a running campaign. Commits since then change
 no production-path file (checked). To change production code: commit, refresh
 the snapshot **between** windows, and record the change here.
