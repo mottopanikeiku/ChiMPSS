@@ -11,7 +11,7 @@ from openmmtools.states import SamplerState, ThermodynamicState
 from chimpss.fultonmarket.analysis import FultonMarketAnalysis
 from chimpss.fultonmarket.randolph import Randolph
 from chimpss.fultonmarket.utils import *
-from chimpss.shared.io import build_output_path, file_exists_skip, validate_name
+from chimpss.shared.io import build_output_path, validate_name
 
 
 class FultonMarket():
@@ -216,10 +216,8 @@ class FultonMarket():
         # `_configure_experiment_parameters` will set self.sim_no accordingly
         # and the main loop will resume from there.
         n_completed_subsims = len(os.listdir(self.save_dir))
-        if n_completed_subsims == 0 and file_exists_skip(self.output_ncdf, 'FultonMarket trajectory'):
-            print('Trajectory already exists with no saved sub-simulations. '
-                  'Move or delete it to re-run.')
-            return
+        if n_completed_subsims == 0 and os.path.exists(self.output_ncdf):
+            self._resume_interrupted_first_subsim()
         if n_completed_subsims > 0 and os.path.exists(self.output_ncdf):
             print(f'[resume] Found {n_completed_subsims} completed sub-simulation(s); '
                   f'will resume from sim_no={n_completed_subsims}.')
@@ -326,6 +324,49 @@ class FultonMarket():
                                                        self.init_positions,
                                                        self.init_box_vectors,
                                                        self.init_velocities)
+
+
+    def _resume_interrupted_first_subsim(self):
+        """Restart an interrupted sub-simulation 0 with the ladder it had reached.
+
+        Sub-simulation 0 grows the temperature ladder -- the most expensive part
+        of a fresh run -- and nothing is saved until it completes. If the wall
+        clock kills it, output.ncdf remains with no saved sub-simulations.
+        Previously that case printed 'Trajectory already exists' and returned,
+        so every later run exited 0 having done nothing (v1 job 50926204; v2
+        5-HT2B methylergonovine_T140A_mutseq, which reached a 180-state ladder
+        ~40 min short of finishing sub-sim 0 and then stalled). Deleting the file
+        instead would restart from the initial ladder, which can repeat forever
+        if sub-sim 0 never fits in one window.
+
+        So: read the ladder the interrupted run reached, move its partial files
+        aside (*.interrupted_subsim0), and restart sub-simulation 0 from the
+        input state with that ladder. If the file cannot be read, fall back to
+        the initial ladder.
+        """
+        try:
+            from openmmtools.multistate import MultiStateReporter
+            reporter = MultiStateReporter(self.output_ncdf, open_mode='r')
+            try:
+                temps = [s.temperature for s in reporter.read_thermodynamic_states()[0]]
+            finally:
+                reporter.close()
+        except Exception as exc:
+            temps = None
+            printf(f'[resume] could not read the ladder from {self.output_ncdf} '
+                   f'({type(exc).__name__}: {exc}); restarting sub-simulation 0 from the initial ladder.')
+
+        for path in (self.output_ncdf, self.checkpoint_ncdf):
+            if os.path.exists(path):
+                os.replace(path, path + '.interrupted_subsim0')
+
+        if temps:
+            self.temperatures = temps
+            self.n_replicates = len(temps)
+            printf(f'[resume] sub-simulation 0 was interrupted; restarting it with the '
+                   f'{len(temps)}-state ladder it had reached '
+                   f'({temps[0].value_in_unit(unit.kelvin):.1f}-{temps[-1].value_in_unit(unit.kelvin):.1f} K). '
+                   f'Partial files moved to *.interrupted_subsim0.')
 
 
     def _build_thermodynamic_states(self):
