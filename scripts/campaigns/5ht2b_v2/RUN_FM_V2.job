@@ -44,6 +44,10 @@ OUT_DIR="$3"
 GEN=${FM_GEN:-0}
 MAX_GEN=${FM_MAX_GEN:-25}
 n_saved() { ls "${OUT_DIR}/saved_variables" 2>/dev/null | wc -l; }
+# Sub-sims needed to reach the target, from the args (ceil(total_sim_time / sim_length)).
+arg_val() { local k=$1; shift; while [ $# -gt 0 ]; do [ "$1" = "$k" ] && { echo "$2"; return; }; shift; done; }
+TOTAL=$(arg_val --total_sim_time "${ARGS[@]}"); SIMLEN=$(arg_val --sim_length "${ARGS[@]}")
+TARGET_N=$(( (${TOTAL:-1500} + ${SIMLEN:-25} - 1) / ${SIMLEN:-25} ))
 
 echo "FULTONMARKET V2 BATCH JOB (gen ${GEN}) args: $*"
 echo "  code snapshot: $(cat COMMIT 2>/dev/null)"
@@ -84,9 +88,16 @@ while true; do
     done
     elapsed=$((SECONDS - t0))
 
-    if [ "$rc" -eq 0 ]; then
-        echo "=== python exited 0 after ${elapsed}s -- target reached. ==="
+    # Exit 0 only counts as done when the sub-sims are actually there: FultonMarket
+    # used to return 0 having done nothing ('Trajectory already exists'), which
+    # silently ended methylergonovine_T140A_mutseq's chain at 0/60.
+    if [ "$rc" -eq 0 ] && [ "$(n_saved)" -ge "${TARGET_N}" ]; then
+        echo "=== python exited 0 after ${elapsed}s -- target reached ($(n_saved)/${TARGET_N}). ==="
         break
+    fi
+    if [ "$rc" -eq 0 ]; then
+        echo "=== python exited 0 but only $(n_saved)/${TARGET_N} sub-sims are saved -- NOT done ==="
+        rc=99
     fi
     if [ "$elapsed" -lt "$MIN_REAL_RUN" ]; then
         fast_fails=$((fast_fails + 1))
@@ -107,7 +118,7 @@ while true; do
 done
 
 # Target reached in THIS job (not a no-op successor): assess convergence automatically.
-if [ "$rc" -eq 0 ] && [ "$(n_saved)" -gt "${start_saved}" ]; then
+if [ "$(n_saved)" -ge "${TARGET_N}" ] && [ "$(n_saved)" -gt "${start_saved}" ]; then
     cj=$(sbatch --parsable -J "CONV_$(basename "${OUT_DIR}")" \
          /expanse/lustre/projects/iit127/fcetin/5ht2b/v2/scripts/CONVERGENCE.job "${OUT_DIR}" "${ARGS[0]}" 2>&1)
     echo "=== target reached: submitted convergence assessment ${cj} ==="
