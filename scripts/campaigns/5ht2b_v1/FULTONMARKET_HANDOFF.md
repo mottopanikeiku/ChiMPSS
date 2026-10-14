@@ -91,6 +91,16 @@ multiplies saved frames unless the save interval is decoupled;
 `chimpss-convergence` was also fixed to pool segments whose ladder grew
 (ChiMPSS fac41cd). It previously refused every v2 system.
 
+**Convergence verdict at the pause (chimpss-convergence, latest checkpoint per
+system, `v2/logs/retro/convergence_<system>_20261014.json`): NOT converged in
+all nine.** Drift between the first and second halves of the run is detected
+for protein conformation and ligand pose in essentially every system (p <=
+0.028; lisuride ligand pose 0.056), and most have too few independent samples
+(8-42). This matches the two problems above: an environment still changing
+(membrane) and sampling that does not mix across temperatures. On LY266097 at
+43 sub-sims MBAR now solves in 1.9 s (it hung for over 30 min before ChiMPSS
+679811b/697374e).
+
 ## ▶ 2026-10-06: v2 campaign launched — runbook in `v2/README.md`
 
 The v1 data below (`fultonmarket_hmr/`) is not valid REMD. All nine systems were
