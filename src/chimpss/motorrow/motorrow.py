@@ -92,7 +92,8 @@ class MotorRow():
 
 
     def main(self, pdb_in, restrain_step_5: bool=False, step_5_nsteps: int=1250000, dt: float=2.0,
-             step_5_barostat: str='isotropic', step_5_surface_tension: float=0.0):
+             step_5_barostat: str='isotropic', step_5_surface_tension: float=0.0,
+             membrane_surface_tension: float=300.0):
         """
         Run the standard five step equilibration
         0 - Minimization
@@ -111,6 +112,13 @@ class MotorRow():
             step_5_surface_tension: float, bar*nm: surface tension for the
                 step-5 membrane barostat. Default 0 (tensionless; what Amber
                 Lipid17 bilayers are parameterised for).
+            membrane_surface_tension: float, bar*nm: surface tension for the
+                membrane barostat in steps 2 and 4. Default 300 keeps the
+                historical behaviour, but for Amber Lipid17 / CHARMM36 bilayers
+                use 0: on 5-HT2B (POPC, Lipid17) the 300 bar*nm step 4 thinned
+                the bilayer from D_PP ~3.6-3.8 nm to 2.7-3.0 nm (POPC is
+                ~3.7-3.9 nm), and production at 0 bar*nm was still recovering
+                tens of ns later.
 
         Returns:
             state_fn: string: path to the XML serialized state file
@@ -155,7 +163,8 @@ class MotorRow():
                                                    restrain_lig=restrain_lig,
                                                    dt=dt,
                                                    barostat=step_5_barostat if stepnum == 5 else None,
-                                                   surface_tension=step_5_surface_tension)
+                                                   surface_tension=(step_5_surface_tension if stepnum == 5
+                                                                    else membrane_surface_tension))
 
         # If protein/ligand names were provided, rename final outputs with the new convention
         if self.protein_name and self.ligand_name:
@@ -325,7 +334,7 @@ class MotorRow():
                   positions_from_pdb:str=None,
                   restrain_lig: bool=True,
                   barostat: str=None,
-                  surface_tension: float=0.0):
+                  surface_tension: float=None):
 
         """
         Run different hard-coded Simulations based on the step number
@@ -375,6 +384,11 @@ class MotorRow():
             elif self.lig_resname is not None or self.lig_chain is not None:
                 raise Exception('Could not find ligand...')
 
+        # Historical defaults when called directly: 300 bar*nm for the steps 2/4
+        # membrane barostat, tensionless for step 5 (see main()).
+        if surface_tension is None:
+            surface_tension = 0.0 if stepnum == 5 else 300.0
+
         #STEP SPECIFIC ACTIONS
         if stepnum == 1:
 
@@ -393,7 +407,7 @@ class MotorRow():
             system = restrain_atoms(system, crds, np.array(mem_heavy), rst_name='mem_k', rst_strength=86.68*(joule)/(angstrom*angstrom*mole))
 
             # Add MC Membrane Barostat
-            system.addForce(MonteCarloMembraneBarostat(press*bar, 300*bar*nanometer, temp*kelvin,
+            system.addForce(MonteCarloMembraneBarostat(press*bar, surface_tension*bar*nanometer, temp*kelvin,
                                                        MonteCarloMembraneBarostat.XYIsotropic,
                                                        MonteCarloMembraneBarostat.ZFree, 100))
 
@@ -406,7 +420,7 @@ class MotorRow():
             system = restrain_atoms(system, crds, np.array(prt_heavy), rst_name='prot_k', rst_strength=86.68*(joule)/(angstrom*angstrom*mole))
 
             # Add MC Membrane Barostat
-            system.addForce(MonteCarloMembraneBarostat(press*bar, 300*bar*nanometer, temp*kelvin,
+            system.addForce(MonteCarloMembraneBarostat(press*bar, surface_tension*bar*nanometer, temp*kelvin,
                                                        MonteCarloMembraneBarostat.XYIsotropic,
                                                        MonteCarloMembraneBarostat.ZFree, 100))
         elif stepnum == 5:

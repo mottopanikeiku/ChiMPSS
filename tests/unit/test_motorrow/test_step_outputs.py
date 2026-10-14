@@ -60,3 +60,13 @@ def test_completed_step_publishes_pdb_then_marker_and_drops_checkpoint(tmp_path)
 
 def test_partial_name():
     assert MotorRow._partial_name('/w/step_5.xml') == '/w/step_5.partial.xml'
+
+
+def test_membrane_surface_tension_is_a_parameter_not_hardcoded():
+    """Steps 2/4 used a hard-coded 300 bar*nm, which thinned Lipid17 POPC bilayers
+    by ~1 nm. It must be settable (0 for Amber Lipid17 / CHARMM36)."""
+    import inspect
+    src = inspect.getsource(MotorRow)
+    assert '300*bar*nanometer' not in src
+    assert 'membrane_surface_tension' in inspect.signature(MotorRow.main).parameters
+    assert inspect.signature(MotorRow.main).parameters['membrane_surface_tension'].default == 300.0
