@@ -186,6 +186,16 @@ def load_state0_samples(fm_dir: str, n_segments: Optional[int] = None,
                         equilibration: bool = True, _printf=print) -> dict:
     """Pool samples from the first `n_segments` sub-simulations and weight them to state 0.
 
+    FultonMarket keeps inserting temperature states after sub-simulation 0
+    whenever a neighbour pair drops below its acceptance threshold (every v2
+    5-HT2B system grew 2-8 states over 30-44 segments), so segments generally
+    have different ladders. They are pooled EXACTLY onto the union ladder: with
+    one pressure and zero surface tension for every state, each stored reduced
+    potential is u_k(x) = H(x) / (k_B T_k), so a sample's energy at any union
+    temperature follows from H(x). This is verified per segment (raises if
+    u_k * T_k is not constant over k). N_k counts how often each union state was
+    actually sampled.
+
     Returns dict with sample (segment, frame, replica) indices for the samples
     carrying `weight_mass` of the state-0 weight, their renormalised weights,
     their global iteration index, t0 and the full-pool Kish n_eff.
@@ -195,35 +205,51 @@ def load_state0_samples(fm_dir: str, n_segments: Optional[int] = None,
     from chimpss.fultonmarket.utils import compute_MBAR_weights
 
     segs = _segment_dirs(fm_dir)[: n_segments]
-    E = [np.asarray(np.load(os.path.join(s, 'energies.npy'), mmap_mode='r')) for s in segs]
-    S = [np.asarray(np.load(os.path.join(s, 'states.npy'), mmap_mode='r')) for s in segs]
-    K = E[0].shape[2]
-    if any(e.shape[1:] != (K, K) for e in E):
-        raise ValueError('temperature ladder changes between the selected segments')
-    seg_id = np.concatenate([np.full(e.shape[0], i) for i, e in enumerate(E)])
-    frame = np.concatenate([np.arange(e.shape[0]) for e in E])
-    Ecat = np.concatenate(E, axis=0)                     # (T, replica, state)
-    Scat = np.concatenate(S, axis=0)                     # (T, replica) -> state
-    T = Ecat.shape[0]
+    temps = [np.asarray(np.load(os.path.join(s, 'temperatures.npy')), dtype=np.float64) for s in segs]
+    if len({round(float(t[0]), 6) for t in temps}) != 1:
+        raise ValueError('T_min differs between segments; cannot pool onto one state 0')
+    union = np.unique(np.round(np.concatenate(temps), 6))
+    K = len(union)
+
+    h, n_seg, n_frame, n_rep, n_iter, n_state, u_own = [], [], [], [], [], [], []
+    it0 = 0
+    for i, s in enumerate(segs):
+        E = np.asarray(np.load(os.path.join(s, 'energies.npy'), mmap_mode='r'), dtype=np.float64)
+        S = np.asarray(np.load(os.path.join(s, 'states.npy'), mmap_mode='r'))
+        t = temps[i]
+        hT = E * t[None, None, :]                              # H(x)/k_B, one value per (frame, replica)
+        spread = np.abs(hT - hT[:, :, :1]).max() / max(np.abs(hT).mean(), 1e-300)
+        if spread > 1e-5:
+            raise ValueError(f'{s}: reduced potentials are not H/(k_B T_k) (relative spread {spread:.1e}); '
+                             f'segments with different ladders cannot be pooled exactly')
+        nf, nr = S.shape
+        to_union = np.searchsorted(union, np.round(t, 6))
+        h.append(hT[:, :, 0].ravel())                           # samples ordered (frame, replica)
+        n_seg.append(np.full(nf * nr, i)); n_frame.append(np.repeat(np.arange(nf), nr))
+        n_rep.append(np.tile(np.arange(nr), nf)); n_iter.append(np.repeat(it0 + np.arange(nf), nr))
+        n_state.append(to_union[S].ravel())
+        u_own.append(np.take_along_axis(E, S[:, :, None], axis=2)[:, :, 0].mean(axis=1))
+        it0 += nf
+    h, n_seg, n_frame, n_rep, n_iter, n_state = map(np.concatenate, (h, n_seg, n_frame, n_rep, n_iter, n_state))
+    u_own = np.concatenate(u_own)
+    T = it0
 
     # equilibration on the mean reduced potential of each replica in its own state
-    u_own = np.take_along_axis(Ecat, Scat[:, :, None], axis=2)[:, :, 0].mean(axis=1)
     t0 = int(detect_equilibration(u_own)[0]) if equilibration else 0
-
-    u_kn = Ecat[t0:].reshape(-1, K).T.astype(np.float64)   # samples ordered (iteration, replica)
-    N_k = np.full(K, T - t0)
+    post = n_iter >= t0
+    u_kn = h[post][None, :] / union[:, None]
+    N_k = np.bincount(n_state[post], minlength=K)
     w_all = compute_MBAR_weights(u_kn, N_k)[:, 0]
     neff_pool = kish_neff(w_all)
 
     order = np.argsort(w_all)[::-1]
     n_keep = int(np.searchsorted(np.cumsum(w_all[order]), weight_mass) + 1)
-    keep = order[: min(n_keep, max_samples)]
-    keep.sort()
-    it = t0 + keep // K
-    rep = keep % K
-    _printf(f'{os.path.basename(fm_dir.rstrip("/"))}: {len(segs)} segments, {T} iterations, '
-            f't0={t0}, K={K}, n_eff(state0)={neff_pool:.0f}, kept {len(keep)} samples')
-    return dict(segment=seg_id[it], frame=frame[it], replica=rep, iteration=it,
+    keep = np.sort(order[: min(n_keep, max_samples)])
+    idx = np.flatnonzero(post)[keep]
+    _printf(f'{os.path.basename(fm_dir.rstrip("/"))}: {len(segs)} segments, {T} iterations, t0={t0}, '
+            f'union ladder K={K} (per-segment {min(map(len, temps))}-{max(map(len, temps))}), '
+            f'n_eff(state0)={neff_pool:.0f}, kept {len(keep)} samples')
+    return dict(segment=n_seg[idx], frame=n_frame[idx], replica=n_rep[idx], iteration=n_iter[idx],
                 weight=w_all[keep] / w_all[keep].sum(), t0=t0, n_iterations=T,
                 neff_pool=neff_pool, segments=segs)
 

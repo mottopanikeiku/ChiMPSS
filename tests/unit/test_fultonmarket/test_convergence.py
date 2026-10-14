@@ -107,19 +107,18 @@ def test_too_few_effective_samples_gives_no_verdict():
     assert kish_neff(w) == pytest.approx(12)
 
 
-def test_loader_maps_samples_to_segment_frame_replica(tmp_path):
-    """Pool two fake FultonMarket segments; every kept sample must point at its own coordinates."""
-    pytest.importorskip("pymbar")
-    from chimpss.fultonmarket.convergence import load_state0_samples
-
-    rng = np.random.default_rng(0)
-    K, n_atoms = 3, 4
-    betas = np.array([1.0, 0.97, 0.94])
-    for seg, nf in ((0, 6), (1, 5)):
-        d = tmp_path / 'saved_variables' / str(seg)
+def _write_segments(root, ladders, frames, n_atoms=4, energy_fn=None, seed=0):
+    """Fake FultonMarket saved_variables/ with per-segment ladders (sorted temperatures)."""
+    rng = np.random.default_rng(seed)
+    for seg, (T, nf) in enumerate(zip(ladders, frames)):
+        T = np.asarray(T, dtype=float)
+        K = len(T)
+        d = root / 'saved_variables' / str(seg)
         d.mkdir(parents=True)
-        U = -1000 + 5 * rng.standard_normal((nf, K))                  # (frame, replica)
-        np.save(d / 'energies.npy', (U[:, :, None] * betas[None, None, :]).astype(np.float32))
+        H = -300000 + 1500 * rng.standard_normal((nf, K))            # H/k_B per (frame, replica)
+        E = H[:, :, None] / T[None, None, :] if energy_fn is None else energy_fn(H, T)
+        np.save(d / 'energies.npy', E.astype(np.float32))
+        np.save(d / 'temperatures.npy', T)
         np.save(d / 'states.npy', np.array([rng.permutation(K) for _ in range(nf)], np.int32))
         pos = np.zeros((nf, K, n_atoms, 3), np.float32)
         for f in range(nf):
@@ -128,11 +127,51 @@ def test_loader_maps_samples_to_segment_frame_replica(tmp_path):
         pos.tofile(d / 'positions.npy')                                 # raw memmap, as Randolph writes
         np.save(d / 'box_vectors.npy', np.tile(np.eye(3, dtype=np.float32) * 5, (nf, K, 1, 1)))
 
-    s = load_state0_samples(str(tmp_path), equilibration=False, weight_mass=1.0, _printf=lambda *_: None)
-    assert s['n_iterations'] == 11 and s['t0'] == 0
-    assert np.isclose(s['weight'].sum(), 1.0)
+
+def _check_mapping(s, frames, n_atoms=4):
+    starts = np.cumsum([0] + list(frames))
     for seg_i, f, r, it in zip(s['segment'], s['frame'], s['replica'], s['iteration']):
         X = _positions_memmap(s['segments'][seg_i], n_atoms)
         assert tuple(X[f, r, 0]) == (seg_i, f, r)
-        assert it == (f if seg_i == 0 else 6 + f)
+        assert it == starts[seg_i] + f
+
+
+def test_loader_maps_samples_to_segment_frame_replica(tmp_path):
+    """Pool two fake FultonMarket segments; every kept sample must point at its own coordinates."""
+    pytest.importorskip("pymbar")
+    from chimpss.fultonmarket.convergence import load_state0_samples
+
+    ladder = [300.0, 309.0, 319.0]
+    _write_segments(tmp_path, [ladder, ladder], [6, 5])
+    s = load_state0_samples(str(tmp_path), equilibration=False, weight_mass=1.0, _printf=lambda *_: None)
+    assert s['n_iterations'] == 11 and s['t0'] == 0
+    assert np.isclose(s['weight'].sum(), 1.0)
+    _check_mapping(s, [6, 5])
     assert os.path.basename(s['segments'][1]) == '1'
+
+
+def test_loader_pools_segments_whose_ladder_grew(tmp_path):
+    """FultonMarket inserts states after sub-sim 0 (every v2 5-HT2B system did).
+    Segments with different ladders must pool exactly onto the union ladder."""
+    pytest.importorskip("pymbar")
+    from chimpss.fultonmarket.convergence import load_state0_samples
+
+    ladders = [[300.0, 309.0, 319.0], [300.0, 304.5, 309.0, 319.0]]   # 304.5 inserted
+    _write_segments(tmp_path, ladders, [6, 5])
+    msgs = []
+    s = load_state0_samples(str(tmp_path), equilibration=False, weight_mass=1.0, _printf=msgs.append)
+    assert 'union ladder K=4' in msgs[0]
+    assert s['n_iterations'] == 11 and np.isclose(s['weight'].sum(), 1.0)
+    _check_mapping(s, [6, 5])
+
+
+def test_loader_refuses_energies_that_are_not_beta_H(tmp_path):
+    pytest.importorskip("pymbar")
+    from chimpss.fultonmarket.convergence import load_state0_samples
+
+    ladder = [300.0, 309.0, 319.0]
+    # an extra state-dependent term (e.g. a non-zero surface tension or restraint) breaks rescaling
+    bad = lambda H, T: H[:, :, None] / T[None, None, :] + np.arange(len(T))[None, None, :] * 50.0
+    _write_segments(tmp_path, [ladder, ladder], [6, 5], energy_fn=bad)
+    with pytest.raises(ValueError, match='not H/'):
+        load_state0_samples(str(tmp_path), equilibration=False, _printf=lambda *_: None)
