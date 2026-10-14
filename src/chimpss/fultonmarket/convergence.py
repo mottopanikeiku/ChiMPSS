@@ -236,16 +236,26 @@ def load_state0_samples(fm_dir: str, n_segments: Optional[int] = None,
 
     # equilibration on the mean reduced potential of each replica in its own state
     t0 = int(detect_equilibration(u_own)[0]) if equilibration else 0
-    post = n_iter >= t0
-    u_kn = h[post][None, :] / union[:, None]
-    N_k = np.bincount(n_state[post], minlength=K)
-    w_all = compute_MBAR_weights(u_kn, N_k)[:, 0]
+    # pymbar assumes samples are GROUPED by the state they were drawn from (the
+    # first N_k[0] from state 0, ...): its 'mean-reduced-potential' start uses
+    # u_kn[k, :N_k[k]] and its BAR start uses the implied labels. Samples here
+    # are in time order, which gave every state the same (earliest) samples as
+    # its starting guess; at 43 LY266097 segments (~71k samples x 167 states)
+    # the solver then failed to converge within 30 min. Sort by sampled state,
+    # solve, and map back.
+    post_idx = np.flatnonzero(n_iter >= t0)
+    by_state = post_idx[np.argsort(n_state[post_idx], kind='stable')]
+    u_kn = h[by_state][None, :] / union[:, None]
+    N_k = np.bincount(n_state[by_state], minlength=K)
+    w_all = compute_MBAR_weights(u_kn, N_k, samples_grouped_by_state=True)[:, 0]   # aligned with by_state
     neff_pool = kish_neff(w_all)
 
     order = np.argsort(w_all)[::-1]
     n_keep = int(np.searchsorted(np.cumsum(w_all[order]), weight_mass) + 1)
-    keep = np.sort(order[: min(n_keep, max_samples)])
-    idx = np.flatnonzero(post)[keep]
+    keep = order[: min(n_keep, max_samples)]
+    idx = by_state[keep]
+    time_order = np.argsort(idx)                            # back to time order (sequential reads)
+    idx, keep = idx[time_order], keep[time_order]
     _printf(f'{os.path.basename(fm_dir.rstrip("/"))}: {len(segs)} segments, {T} iterations, t0={t0}, '
             f'union ladder K={K} (per-segment {min(map(len, temps))}-{max(map(len, temps))}), '
             f'n_eff(state0)={neff_pool:.0f}, kept {len(keep)} samples')

@@ -175,3 +175,32 @@ def test_loader_refuses_energies_that_are_not_beta_H(tmp_path):
     _write_segments(tmp_path, [ladder, ladder], [6, 5], energy_fn=bad)
     with pytest.raises(ValueError, match='not H/'):
         load_state0_samples(str(tmp_path), equilibration=False, _printf=lambda *_: None)
+
+
+def test_loader_weights_stay_attached_to_their_samples(tmp_path):
+    """MBAR is solved on samples grouped by state, then mapped back: every
+    returned weight must still belong to its own (segment, frame, replica)."""
+    pymbar = pytest.importorskip("pymbar")
+    from chimpss.fultonmarket.convergence import load_state0_samples
+
+    ladders = [[300.0, 303.0, 306.0, 309.0], [300.0, 303.0, 304.5, 306.0, 309.0]]
+    _write_segments(tmp_path, ladders, [8, 7], seed=3)
+    s = load_state0_samples(str(tmp_path), equilibration=False, weight_mass=1.0, _printf=lambda *_: None)
+    got = {(int(a), int(b), int(c)): w for a, b, c, w in zip(s['segment'], s['frame'], s['replica'], s['weight'])}
+
+    # independent reference: rebuild H for every sample, sort by sampled state, solve MBAR
+    union = np.array(sorted({t for L in ladders for t in L}))
+    keys, H, st = [], [], []
+    for seg, T in enumerate(ladders):
+        d = tmp_path / 'saved_variables' / str(seg)
+        E = np.load(d / 'energies.npy').astype(float); S = np.load(d / 'states.npy')
+        for f in range(S.shape[0]):
+            for r in range(S.shape[1]):
+                keys.append((seg, f, r)); H.append(E[f, r, 0] * T[0])
+                st.append(int(np.searchsorted(union, T[S[f, r]])))
+    o = np.argsort(st, kind='stable')
+    u_kn = np.array(H)[o][None, :] / union[:, None]
+    m = pymbar.MBAR(u_kn, np.bincount(np.array(st)[o], minlength=len(union)), initialize='mean-reduced-potential')
+    ref = dict(zip([keys[i] for i in o], m.weights()[:, 0]))
+    assert set(got) == set(ref)
+    np.testing.assert_allclose([got[k] for k in ref], [ref[k] for k in ref], rtol=1e-5, atol=1e-12)
