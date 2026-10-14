@@ -7,7 +7,7 @@
 #SBATCH --ntasks-per-node=10
 #SBATCH --mem=90G
 #SBATCH --account=iit127
-#SBATCH -t 48:00:00
+#SBATCH -t 24:00:00
 #SBATCH --mail-type=FAIL
 #SBATCH --requeue
 #SBATCH --exclude=exp-1-58
