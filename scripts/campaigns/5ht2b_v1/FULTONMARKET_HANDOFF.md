@@ -1,6 +1,6 @@
 # FultonMarket (stage 3) — status & handoff
 
-_Last updated: 2026-10-06. Protein: 5-HT2B. 9 biased-agonism ligand systems._
+_Last updated: 2026-10-14. Protein: 5-HT2B. 9 biased-agonism ligand systems._
 
 > **TIMEOUT after 48 h is the NORMAL, HEALTHY end state of these jobs.** It is
 > not a failure and it is not something to fix. A 1500 ns target takes ~4 × 48 h
@@ -8,6 +8,36 @@ _Last updated: 2026-10-06. Protein: 5-HT2B. 9 biased-agonism ligand systems._
 > ends by hitting the wall clock. Read `saved_variables/` counts, never `sacct`.
 > The 2026-08-05 round ended with all 9 jobs in TIMEOUT and was the single most
 > productive round of the campaign (+129 sub-sims).
+
+## ⛔ 2026-10-14: the GPU allocation is exhausted — v2 production is paused
+
+**GPU time is a separate allocation: resource `expanse_gpu` (underscore).**
+
+    expanse-client project iit127 -r expanse_gpu      # GPU-hours: 3192 total, 3187 spent (2026-10-14)
+    expanse-client project iit127                      # 'expanse' = CPU SU, a different balance
+
+Every statement below that the allocation was "healthy", had "~20,000 SU", or
+left "no time pressure" (2026-08-08, 2026-09-26, 2026-10-05) is about the
+**CPU** allocation and is **wrong for GPU**. `expanse-gpu` (hyphen) returns
+"Project not found", which is how this was missed twice. The "Project balance
+is not enough" refusals were SDSC's filter comparing the shrinking
+**GPU** balance against queued jobs' reservations. That is also why the
+admissible job "ceiling" kept falling.
+
+What happened: from 2026-10-13 ~02:30 every successor and watchdog
+resubmission was refused, so eight systems sat idle ~23 h (watchdog now fixed
+to read the GPU balance and alert). On 2026-10-14 six jobs I had resubmitted
+were cancelled before they could start and overdraw ~200 GPU-h; the
+filter blocked even `scontrol hold`.
+
+State at the pause: **315/540** sub-sims (LSD 28, lisuride 43, methylergonovine
+33, methysergide 33, LY266097 43, lisuride_L362F 44, T140A ~30, methysergide_A225G
+33, LSD_L362F 28). v2 used 1,295 GPU-h so far (432 growing ladders in the first
+windows; then ~3.6 GPU-h per saved sub-sim). **Finishing all nine to 60 needs
+~820–900 GPU-h.** Options are the PI's: an ACCESS supplement for `expanse_gpu`,
+an ACCESS exchange of unused CPU credits (~12k SU left), other GPU resources, or
+stopping systems early where `chimpss-convergence` says they are converged. The
+watchdog resumes production automatically once the GPU balance is >= 30 GPU-h.
 
 ## ▶ 2026-10-06: v2 campaign launched — runbook in `v2/README.md`
 
@@ -66,8 +96,10 @@ them in the same pass. **PI decision; nothing has been rerun.**
 **Rough rerun cost (estimate).** 175 min per sub-sim on one V100 (measured,
 ~101k atoms) × 60 ≈ 175 GPU-h per system, plus about one 48 h window for the
 sim-0 ladder build ⇒ roughly 2,000 GPU-h for nine systems, about 8–10 days of
-wall time with nine GPUs kept busy. The allocation (TG-BIO250326, ~20,000 SU
-left, expires 2027-05-01) covers that several times over. It scales up if the
+wall time with nine GPUs kept busy. ~~The allocation (TG-BIO250326, ~20,000 SU
+left, expires 2027-05-01) covers that several times over.~~ ⛔ WRONG for GPU (that is the CPU
+allocation); expanse_gpu had only ~1,300 GPU-h left (est. from 3,187 spent on 10-14 minus
+~1,311 used by v2 since), i.e. less than this estimate needed. See 2026-10-14. It scales up if the
 per-replica time is increased.
 
 ### Convergence analysis — further problems found 2026-10-05
@@ -122,6 +154,9 @@ one-job-per-system via `sacct --format=SubmitLine`. LSD is the long pole (9
 segments ≈ 27 h) and carries a 2-deep `afterany` chain.
 
 ### ✅ CORRECTION: the allocation did NOT expire. There is no time pressure.
+
+> ⛔ **2026-10-14: true for the CPU allocation only.** The GPU allocation
+> (`expanse_gpu`) is separate and ran out on 2026-10-13; see the section at the top.
 
 The section below titled "Allocation clock" says the allocation expires
 **2026-08-28** and that finishing all nine systems is unlikely. **That is
@@ -901,7 +936,8 @@ allocation changed in between.
    `expanse-client project -r expanse-gpu iit127` → *"Project not found"* and a
    passing CPU test. **That was wrong.** `expanse-gpu` is simply not how this
    project's GPU time is tracked, and the CPU/GPU asymmetry is explained by the
-   reservations being GPU-specific. The allocation was healthy throughout
+   reservations being GPU-specific. The allocation was healthy throughout [⛔ 2026-10-14: the CPU one was;
+   the GPU allocation is `expanse_gpu` and was draining — see top]
    (100,000 total, ~5,374 spent). No PI action, renewal, or cloud fallback was
    ever required. That diagnosis was made one minute after a mass `scancel`,
    before the reservations had cleared.

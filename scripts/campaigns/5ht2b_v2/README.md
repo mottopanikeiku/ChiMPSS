@@ -73,6 +73,17 @@ aggregate target.
   `fulton_market.py` is the only production-path change; old snapshot kept as
   `code.0a3c324`). T140A's queued job 54800646 runs the new code.
 
+- **2026-10-13/14: GPU allocation exhausted; production paused.** The GPU
+  allocation is the separate resource `expanse_gpu` (3192 GPU-h; 5 left on
+  10-14). The 'expanse' CPU allocation is NOT what GPU jobs draw on, and the
+  runbook's earlier claim of plenty of allocation was wrong for GPU. From
+  10-13 ~02:30 every resubmission was refused ('Project balance is not
+  enough'), so 8 systems idled ~23 h. Six jobs resubmitted on 10-14 were
+  cancelled before they could overdraw. Watchdog now reads the GPU balance,
+  pauses below 30 GPU-h, emails once, and resumes automatically once GPU time
+  is added. Windows are now 24 h. **315/540 saved; ~820-900 GPU-h needed to
+  finish all nine to 60.** See the top of FULTONMARKET_HANDOFF.md for options.
+
 ## Layout
 
     v2/json/<name>.json            Bridgeport input (protonated SMILES, v2 working_dir)
@@ -143,8 +154,10 @@ its 48 h TIMEOUT. TIMEOUT is normal; read sub-sim counts, not SLURM states.
 - **An equilibration failed.** Resubmit `sbatch -J EQUIL_V2_<name> scripts/EQUIL_V2.job <name>`.
   MotorRow skips completed steps. Then `bash scripts/submit_fm_v2.sh <name>`
   (its launcher will not fire).
-- **"Project balance is not enough"** is GPU-reservation pressure, not a missing
-  allocation. See the handoff doc. Wait ~30 min after cancels and retry.
+- **"Project balance is not enough"**: first check the GPU balance,
+  `expanse-client project iit127 -r expanse_gpu`. If it is low, that is the cause
+  and only more GPU time fixes it. Otherwise it is reservation pressure from
+  queued jobs; wait ~30 min after cancels and retry.
 - **NaNs** are handled by the retry loop inside each window. Do NOT lower dt.
 
 ## Convergence
