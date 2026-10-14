@@ -33,12 +33,29 @@ SYSTEMS = ['LSD', 'lisuride', 'methylergonovine', 'methysergide', 'LY266097',
            'methysergide_A225G_mutseq', 'LSD_L362F_mutseq']
 TARGET = 60
 MAX_NO_PROGRESS = 3
+MIN_GPU_HOURS = 30          # one 24 h window plus margin
+MAX_REFUSALS = 2            # consecutive refused resubmissions before flagging
 STATE = f'{V2}/logs/watchdog_state.json'
 OUT_RE = re.compile(r'/v2/fultonmarket/([A-Za-z0-9_]+)(?=\s|$)')
 
 
 def sh(cmd):
     return subprocess.run(cmd, capture_output=True, text=True).stdout
+
+
+def gpu_hours_left(text=None):
+    """Remaining GPU-hours on the project's GPU allocation (resource expanse_gpu).
+
+    GPU time is NOT the 'expanse' CPU allocation: on 2026-10-13 the CPU side
+    showed 12k SU free while expanse_gpu was 5 of 3192 GPU-h from empty, and
+    every submission was refused with 'Project balance is not enough'.
+    Returns None if the balance cannot be read.
+    """
+    if text is None:
+        text = sh(['expanse-client', 'project', 'iit127', '-r', 'expanse_gpu', '-p'])
+    tot = re.search(r'Total allocation\s+(\d+)', text)
+    spent = re.search(r'Total spent\s+(\d+)', text)
+    return int(tot.group(1)) - int(spent.group(1)) if tot and spent else None
 
 
 def queued_jobs(user='fcetin'):
@@ -111,6 +128,9 @@ def selftest():
     m = OUT_RE.search('sbatch x.job /a/v2/equil_hmr/LSD/step_5.pdb /b /p/v2/fultonmarket/LSD_L362F_mutseq --x 1')
     if not m or m.group(1) != 'LSD_L362F_mutseq':
         bad.append(('OUT_RE', 'LSD_L362F_mutseq', m and m.group(1)))
+    sample = ' Resource          expanse_gpu\n Total allocation  3192\n Total spent       3187\n'
+    if gpu_hours_left(sample) != 5 or gpu_hours_left('garbage') is not None:
+        bad.append(('gpu_hours_left', 5, gpu_hours_left(sample)))
     print('selftest:', 'PASS' if not bad else f'FAIL {bad}')
     return not bad
 
@@ -135,6 +155,18 @@ def main():
 
     state = json.load(open(STATE)) if os.path.exists(STATE) else {}
     flags, actions, all_done = [], [], True
+
+    gpu_left = gpu_hours_left()
+    paused = gpu_left is not None and gpu_left < MIN_GPU_HOURS
+    if paused:
+        print(f'[{now}] GPU ALLOCATION EXHAUSTED: expanse_gpu has {gpu_left} GPU-h left '
+              f'(< {MIN_GPU_HOURS}); no submissions this round. Add GPU time to resume.')
+        if not state.get('_gpu_alerted'):
+            flags.append('expanse_gpu exhausted')      # email once per episode
+            state['_gpu_alerted'] = True
+    else:
+        state.pop('_gpu_alerted', None)
+        print(f'[{now}] expanse_gpu balance: {gpu_left if gpu_left is not None else "unreadable"} GPU-h')
     for s in SYSTEMS:
         out = f'{V2}/fultonmarket/{s}'
         n = len([d for d in os.listdir(f'{out}/saved_variables') if d.isdigit()]) if os.path.isdir(f'{out}/saved_variables') else 0
@@ -149,14 +181,22 @@ def main():
 
         if action == 'FLAG':
             flags.append(s)
+        elif action == 'RESUBMIT' and paused:
+            print('           -> not submitted: GPU allocation exhausted')
         elif action == 'RESUBMIT' and not a.dry_run:
             r = subprocess.run(['bash', f'{V2}/scripts/submit_fm_v2.sh', s], capture_output=True, text=True)
             ok = 'link 0:' in r.stdout
-            print(f'           -> submit_fm_v2.sh {"OK: " + r.stdout.split("link 0:")[1].split()[0] if ok else "REFUSED (retry next round): " + (r.stderr or r.stdout).strip()[-300:]}')
+            st = state.get(s, {})
             if ok:
-                st = state.get(s, {})
-                state[s] = {'n': n, 'count': st.get('count', 0) + 1 if st.get('n') == n else 1}
+                print(f'           -> submit_fm_v2.sh OK: {r.stdout.split("link 0:")[1].split()[0]}')
+                state[s] = {'n': n, 'count': st.get('count', 0) + 1 if st.get('n') == n else 1, 'refused': 0}
                 actions.append(s)
+            else:
+                st['refused'] = st.get('refused', 0) + 1
+                state[s] = st
+                print(f'           -> REFUSED ({st["refused"]} in a row): {(r.stderr or r.stdout).strip()[-200:]}')
+                if st['refused'] == MAX_REFUSALS:            # email once per refusal streak
+                    flags.append(s)
         elif action == 'CONVERGE' and not a.dry_run:
             r = subprocess.run(['sbatch', '--parsable', '-J', f'CONV_{s}', f'{V2}/scripts/CONVERGENCE.job',
                                 out, f'{V2}/equil_hmr/{s}/step_5.pdb'], capture_output=True, text=True)
