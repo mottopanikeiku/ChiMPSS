@@ -7,4 +7,4 @@ export JAX_PLATFORMS=cpu XLA_FLAGS="--xla_force_host_platform_device_count=1"
 export OPENBLAS_NUM_THREADS=8 OMP_NUM_THREADS=8 MKL_NUM_THREADS=8
 export PYTHONPATH=/home/fcetin/ChiMPSS/src
 echo "CONV $* | $(date) | $(cd /home/fcetin/ChiMPSS && git rev-parse --short HEAD)"
-/usr/bin/time -v /home/fcetin/miniconda3/envs/chimpss/bin/python -m chimpss.cli.convergence "$@" 2>&1 | grep -vE '^\*|PyMBAR will|JAX is|MAY cause|uses of JAX|requires 64-bit|which is its default|enable JAX'
+/usr/bin/time -v /home/fcetin/miniconda3/envs/chimpss/bin/python -u -m chimpss.cli.convergence "$@" 2>&1 | grep --line-buffered -vE '^\*|PyMBAR will|JAX is|MAY cause|uses of JAX|requires 64-bit|which is its default|enable JAX'
