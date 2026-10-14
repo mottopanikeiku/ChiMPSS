@@ -9,7 +9,18 @@ _Last updated: 2026-10-14. Protein: 5-HT2B. 9 biased-agonism ligand systems._
 > The 2026-08-05 round ended with all 9 jobs in TIMEOUT and was the single most
 > productive round of the campaign (+129 sub-sims).
 
-## ⛔ 2026-10-14: the GPU allocation is exhausted — v2 production is paused
+## ⛔ 2026-10-14: GPU allocation nearly exhausted — v2 production paused for a PI decision
+
+> **Correction (2026-10-14 ~04:00).** `expanse_gpu` "Total spent" includes the
+> worst-case reservations of queued and running jobs. The "5 GPU-h left" reading
+> came right after I had queued six more jobs. Once they were cancelled the
+> balance read 365 GPU-h, and **~340 GPU-h actually remain**: not enough to
+> finish (~820–900 needed), but not zero. The watchdog then resumed production
+> by design. I **paused it again on purpose**, cancelling all FM_V2 jobs and the
+> watchdog, because the science audit below shows the REMD is sampling a
+> still-relaxing membrane and no system is converged. Relaxing the membrane
+> with REMD costs ~170x more GPU per ns of 300 K dynamics than plain MD.
+> Resume production with `sbatch v2/scripts/WATCHDOG_V2.job`.
 
 **GPU time is a separate allocation: resource `expanse_gpu` (underscore).**
 

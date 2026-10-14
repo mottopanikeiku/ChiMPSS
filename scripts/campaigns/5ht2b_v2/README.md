@@ -93,6 +93,13 @@ aggregate target.
   iterations per replica. Details and options at the top of
   FULTONMARKET_HANDOFF.md.
 
+- **2026-10-14 ~04:00: production PAUSED for a PI decision.** The GPU balance was
+  not truly exhausted: `Total spent` includes reservations, and ~340 GPU-h
+  remain. The watchdog resumed all systems at 02:42 by design; I cancelled them
+  and the watchdog because the audit shows non-equilibrium sampling (see the
+  top of FULTONMARKET_HANDOFF.md). 316/540 saved. Resume:
+  `sbatch scripts/WATCHDOG_V2.job`.
+
 ## Layout
 
     v2/json/<name>.json            Bridgeport input (protonated SMILES, v2 working_dir)
