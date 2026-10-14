@@ -342,7 +342,30 @@ def resample_with_MBAR(objs: List, u_kln: np.array, N_k: np.array, size: int, re
     return return_list
 
 
-def compute_MBAR_weights(u_kln, N_k, tol: float = 1e-6):
+def _bar_chain_f_k(u_kn, N_k):
+    """Free energies from BAR between neighbouring states, chained along the ladder.
+
+    Requires samples GROUPED by sampled state (first N_k[0] from state 0, ...).
+    For a ladder of well-overlapping neighbours this is an almost exact start.
+    """
+    from pymbar.other_estimators import bar
+    K = len(N_k)
+    lab = np.repeat(np.arange(K), N_k)
+    f = np.zeros(K)
+    for k in range(K - 1):
+        a, b = lab == k, lab == k + 1
+        wF = u_kn[k + 1, a] - u_kn[k, a]
+        if a.any() and b.any():
+            try:
+                f[k + 1] = f[k] + bar(wF, u_kn[k, b] - u_kn[k + 1, b], compute_uncertainty=False)['Delta_f']
+                continue
+            except Exception:
+                pass
+        f[k + 1] = f[k] + (np.mean(wF) if a.any() else 0.0)
+    return f
+
+
+def compute_MBAR_weights(u_kln, N_k, tol: float = 1e-6, samples_grouped_by_state: bool = False):
     """
     Compute MBAR sample weights, and refuse to return an unconverged solution.
 
@@ -366,12 +389,26 @@ def compute_MBAR_weights(u_kln, N_k, tol: float = 1e-6):
     """
     from scipy.special import logsumexp
 
-    try:
-        mbar = MBAR(u_kln, N_k, initialize='mean-reduced-potential')
-    except Exception as exc:
-        printf(f"MBAR mean-reduced-potential initialisation failed "
-               f"({type(exc).__name__}: {exc}); retrying from zeros.")
-        mbar = MBAR(u_kln, N_k)
+    if samples_grouped_by_state:
+        # Neighbour-BAR chain start: on 5-HT2B LY266097 (35k samples x 167 states)
+        # this solved in 1.4 s, where the 'mean-reduced-potential' start was still
+        # iterating after 30 min.
+        u_arr = np.asarray(u_kln, dtype=np.float64)
+        try:
+            mbar = MBAR(u_arr, N_k, initial_f_k=_bar_chain_f_k(u_arr, np.asarray(N_k)),
+                        solver_protocol=({'method': 'hybr'},
+                                         {'method': 'adaptive', 'options': {'maximum_iterations': 2000}}))
+        except Exception as exc:
+            printf(f"MBAR from the BAR-chain start failed ({type(exc).__name__}: {exc}); "
+                   f"retrying from the mean reduced potential.")
+            mbar = MBAR(u_arr, N_k, initialize='mean-reduced-potential')
+    else:
+        try:
+            mbar = MBAR(u_kln, N_k, initialize='mean-reduced-potential')
+        except Exception as exc:
+            printf(f"MBAR mean-reduced-potential initialisation failed "
+                   f"({type(exc).__name__}: {exc}); retrying from zeros.")
+            mbar = MBAR(u_kln, N_k)
 
     u = np.asarray(u_kln, dtype=np.float64)
     if u.ndim == 2 and u.shape[0] > 1:

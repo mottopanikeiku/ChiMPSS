@@ -56,3 +56,15 @@ def test_unconverged_solution_is_rejected(monkeypatch):
 
     with pytest.raises(RuntimeError, match="did not converge"):
         utils.compute_MBAR_weights(u_kn, N_k)
+
+
+def test_bar_chain_start_for_state_grouped_samples():
+    """Samples grouped by state can use the neighbour-BAR chain start; it must
+    reach the same exact answer (and is what makes large ladders tractable)."""
+    u_kn, N_k, U, betas, d, U0 = _harmonic_ladder(K=30, n_per_state=150)
+    w = utils.compute_MBAR_weights(u_kn, N_k, samples_grouped_by_state=True)
+    np.testing.assert_allclose(w.sum(axis=0), 1.0, atol=1e-8)
+    exact = U0 + d / (2.0 * betas[0])
+    assert abs(float(np.sum(w[:, 0] * U)) - exact) < 0.02 * (d / (2.0 * betas[0]))
+    f_init = utils._bar_chain_f_k(u_kn, N_k)
+    assert np.all(np.diff(f_init) > 0)          # f_k ~ beta_k <H> rises with T when H < 0
