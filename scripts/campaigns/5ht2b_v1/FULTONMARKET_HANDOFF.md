@@ -39,6 +39,58 @@ an ACCESS exchange of unused CPU credits (~12k SU left), other GPU resources, or
 stopping systems early where `chimpss-convergence` says they are converged. The
 watchdog resumes production automatically once the GPU balance is >= 30 GPU-h.
 
+## 🔬 2026-10-14: science audit of v2 production (315 sub-sims) — two protocol problems
+
+Script: `v2/scripts/audit_v2.py`; output: `v2/logs/audit_v2_20261014.log`.
+
+**What is sound (all nine systems):**
+- Ligand–D135 (D3.32) salt bridge holds in **100 % of 300 K frames** (median
+  N⁺···O 2.68–2.77 Å). The protonation change behaves as intended.
+- Ligand poses are stable: centroid–D135 Cα within ~1 Å of the start, max
+  excursion ≤ 7.7 Å.
+- Replica continuity verified on real production output (0.0 nm at every
+  sub-sim boundary, including after ladder insertions).
+
+**Problem 1 — the membranes are not equilibrated (and v1's were too thin
+throughout).** Phosphate–phosphate thickness D_PP, lipids > 1.5 nm from protein:
+
+| stage | LY266097 | LSD |
+|---|---|---|
+| as built | 3.78 nm | 3.63 nm |
+| MotorRow step 3 (NVT) | 3.61 | 3.24 |
+| MotorRow step 4 (300 bar·nm tension) | **2.72** | **2.98** |
+| MotorRow step 5 | 2.87 | 3.05 |
+| production, latest | 3.22 | 3.11 |
+
+POPC is ~3.7–3.9 nm. Area per lipid is still falling **linearly**
+(~1×10⁻³ nm² per sub-sim, the same in the first and last quarter of the run) in
+every system, so the bilayers are still relaxing. Causes: MotorRow steps 2/4
+hard-code a **300 bar·nm surface tension** (Amber Lipid17 is parameterized
+tensionless), plus lipids spreading into gaps after Bridgeport's box trim
+(thinning already starts in NVT step 3). v1 used the same MotorRow and then
+isotropic coupling, so **v1 membranes were ~25 % too thin for the whole run**.
+Fix: re-equilibrate tensionless (membrane barostat, γ = 0) until D_PP and area
+plateau (~50–100 ns plain MD; ~10 GPU-h per 100 ns per system). MotorRow now
+takes `membrane_surface_tension` (ChiMPSS 58d7397; use 0). Treat v2 data
+collected so far as equilibration.
+
+**Problem 2 — no temperature-space mixing.** 0 bottom→top→bottom round trips
+across 160–190 walkers per system (walkers followed across sub-sim
+boundaries). Walkers move ~2 states per exchange iteration; crossing a
+~170-state ladder by random walk takes ~(K/2)² ≈ 7,000 iterations, but the
+whole planned run is ~600 iterations per replica (60 × ~10). So this T-REMD
+behaves like many short near-300 K runs, and the enhanced sampling is minimal.
+That is a design limit of ~170-replica T-REMD with 17.5 ps exchanges and
+~10 ns per replica, not a code bug. Options (PI decision):
+(a) much more frequent exchanges, e.g. 1–2 ps. openmmtools ParallelTempering
+evaluates each replica's energy once, so this is cheap in compute, but it
+multiplies saved frames unless the save interval is decoupled;
+(b) solute tempering / REST2 with ~10–20 replicas;
+(c) several independent long plain-MD runs instead of T-REMD.
+
+`chimpss-convergence` was also fixed to pool segments whose ladder grew
+(ChiMPSS fac41cd). It previously refused every v2 system.
+
 ## ▶ 2026-10-06: v2 campaign launched — runbook in `v2/README.md`
 
 The v1 data below (`fultonmarket_hmr/`) is not valid REMD. All nine systems were

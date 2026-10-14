@@ -84,6 +84,15 @@ aggregate target.
   is added. Windows are now 24 h. **315/540 saved; ~820-900 GPU-h needed to
   finish all nine to 60.** See the top of FULTONMARKET_HANDOFF.md for options.
 
+- **2026-10-14: science audit** (`scripts/audit_v2.py`, `logs/audit_v2_20261014.log`).
+  Sound: D135 salt bridge in 100% of 300 K frames in all 9, poses stable.
+  Problems: (1) membranes still thickening/contracting linearly, because
+  MotorRow's 300 bar·nm tension in step 4 thinned them to 2.7-3.0 nm (POPC is
+  ~3.7-3.9). Re-equilibrate tensionless before more production. (2) 0
+  temperature round trips in all 9; ~170-state T-REMD cannot mix in ~600
+  iterations per replica. Details and options at the top of
+  FULTONMARKET_HANDOFF.md.
+
 ## Layout
 
     v2/json/<name>.json            Bridgeport input (protonated SMILES, v2 working_dir)
